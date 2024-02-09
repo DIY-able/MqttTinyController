@@ -13,7 +13,7 @@ This code is designed to meet the demands of DIY enthusiasts, it has undergone e
 - Automatic WiFi reconnection functionality to seamlessly reconnect in case of disconnection.
 - Automatic reconnection to the MQTT broker to maintain uninterrupted communication.
 - Quality of Service (QoS) level 1 to guarantee no message loss even in the event of MQTT broker downtime or WiFi disconnection.
-- Utilize the onboard LED to provide clear visual status indications: Operational, WiFi connection in progress, or System halted.
+- Utilize the onboard LED to provide clear visual status indications: Operational (On), WiFi connection in progress (Flashing), or System halted (Off).
 - Provide support for relay switches, with the added capability to configure them as momentary switches, ideal for controlling garage doors with press/release functionality on remote control.
 - Support contact switches for status reporting, particularly useful for magnetic contact sensors.
 - Implement hardware safeguards to prevent relay burnout caused by flooded incoming messages in a single batch, such as after WiFi reconnection.
