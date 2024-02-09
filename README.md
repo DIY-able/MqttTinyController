@@ -70,9 +70,9 @@ If you have multiple clients connecting to MQTT broker with the same Client ID, 
 
 # Usage by Example
 
-- GP16,GP17 are defined as Relay
-- GP18,GP19 are defined as Momentary Relay
-- GP0,GP1,GP2,GP3 are defined as Contact Switch
+- GP16, GP17 are defined as Relay
+- GP18, GP19 are defined as Momentary Relay
+- GP0, GP1, GP2, GP3 are defined as Contact Switch
 - Client is defined as any client (e.g. MQTT web client, MQTT CLI, mobile app (such as "IoT MQTT Panel")
 - MQTT broker is defined as any MQTT broker (e.g. HiveHQ or Mosquitto)
 
@@ -100,9 +100,10 @@ If you have multiple clients connecting to MQTT broker with the same Client ID, 
 - The code sends the response to MQTT broker, all subscribers have the updated message with GP1=1 and GP16=1
 
 # Mobile App "IoT MQTT Panel" Setup by Example
-- GP16,GP17 are defined as Relay
-- GP18,GP19 are defined as Momentary Relay
-- GP0,GP1,GP2,GP3 are defined as Contact Switch
+
+- GP16, GP17 are defined as Relay
+- GP18, GP19 are defined as Momentary Relay
+- GP0, GP1, GP2, GP3 are defined as Contact Switch
 ### Button: (For Relay Switch) 
        Payload On: 1, Payload Off: 0
        "Payload is JSON Data" is Checked
