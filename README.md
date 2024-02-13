@@ -74,7 +74,7 @@ In MQTT specification, a message can be published to MQTT broker on a Topic with
 # Important notes on Client ID
 If you have multiple clients connecting to MQTT broker with the same Client ID, unexpected behavior can happen. For example, you configured mobile app "IoT MQTT Panel" with clientID = "MyHomeClient" and PicoW is using the same clientID. Mobile app is able to publish the message, but PicoW subscription will fail on message call back. Please make sure each device or client have a unique ID.
 
-# Schedule on/off
+# Can relay on/off be scheduled?
 Technically speaking, you can put the scheduling code as part of the microcontroller. In my opinion, scheduling should not be part of it. The sole responsibility for this code is to control the hardware and report the hardware status using MQTT. To do scheduling, you can easily write an Azure Function using MQTT NET or Amazon AWS Lambda. It should be published/subscribed as another MQTT topic.
 
 # Installation for PicoW
