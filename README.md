@@ -53,23 +53,29 @@ Although I was able to fix that, there are more problems on the test case 3:
 - Case 2: Auto re-connect when Wifi fails (SSID is still available): Disconnect your PicoW using router admin
 - Case 3: Auto re-connect when Wifi totally gone (SSID is NOT available): Power off the router or change the SSID name of WiFi
 
-If you are using QoS1 on Case 3, the socket will hangs indefinitely. However, if you are using QoS0, it is fine but it defeats the purpose. The cause is the library uses blocking sockets with no timeout, Qos1 got stuck in wait_msg. It has been well documented in 2016:
+If you are using QoS1 on Case 3, the socket will hang indefinitely. However, if you are using QoS0, it is fine but it defeats the purpose. The cause is the library uses blocking sockets with no timeout, Qos1 got stuck in wait_msg. It has been well documented in 2016:
 
 - https://github.com/micropython/micropython-lib/issues/103 (Qos1 sock WiFi is degraded)
 - https://github.com/micropython/micropython/issues/2568 (Mqtt Wifi dropped, timeout)
 
-Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test cases with QoS1
+Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test cases with QoS1.
 
 # Important notes on QoS1 with Clear Session
 In MQTT specification, there is "Clear Session" option, the code uses Quality of Service (QoS) level 1 with clear session disabled. All your messages have use QoS1 to send, with client "Clear Session" set to FALSE when subscribe to the MQTT broker. For mobile phone app "IoT MQTT Panel", you need to uncheck the "Clear Session" option in "Additional options". 
 - If you have QoS1 enabled with "Clear Session" enabled. Whenever there is a connection lost, all messages during the black out time will be lost.
 - If you have QoS1 enabled with "Clear Session" disabled. All your messages will show up after reconnection.
 
+In "mqtt_as", there are 2 settings, i.e. config["clean"] and config["clearn_init"]. The intention is to prevent large backlog of qos==1 messages being received if outage is long.
+However, in this application, config["clean"] is set to False and config["clearn_init"] is set to True. 
+
 # Important notes on Retain flag
 In MQTT specification, a message can be published to MQTT broker on a Topic with a Retain flag. Please do not enable this flag on the client. The retain message will cause confusion.  For mobile phone app "IoT MQTT Panel", uncheck the "Retain" checkbox next to QoS1 settings.
 
 # Important notes on Client ID
 If you have multiple clients connecting to MQTT broker with the same Client ID, unexpected behavior can happen. For example, you configured mobile app "IoT MQTT Panel" with clientID = "MyHomeClient" and PicoW is using the same clientID. Mobile app is able to publish the message, but PicoW subscription will fail on message call back. Please make sure each device or client have a unique ID.
+
+# Schedule on/off
+Technically speaking, you can put the scheduling code as part of the microcontroller. In my opinion, scheduling should not be part of it. The sole responsibility for this code is to control the hardware and report the hardware status using MQTT. To do scheduling, you can easily write an Azure Function using MQTT NET or Amazon AWS Lambda. It should be published/subscribed as another MQTT topic.
 
 # Installation for PicoW
 1. Use Micropython bootloader RPI_PICO_W-20240105-v1.22.1.uf2 or latest version
