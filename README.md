@@ -2,21 +2,25 @@
 MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches. Support JSON payload for free mobile app such as "IoT MQTT Panel".
 
 # Project
-Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code was crafted by just another average joe (me, a.k.a DIYable) who works as a software engineer full time with decades of experience in IT industry, yet it's first time to write Python. 
+Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases. 
 
-This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. Capable of operating continuously without interruption, even in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling and potentially starts a fire in your home, this solution offers a layer of protection. While the code may not be entirely bulletproof, your input and contributions for enhancement are greatly appreciated. Please feel free to share any improvements you identify to help advance this project.
+Capable of operating continuously without interruption, even in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling and potentially starts a fire in your home, this offers a layer of protection. While the code may not be entirely bulletproof, your input and contributions for enhancement are greatly appreciated. Please feel free to share any improvements you identify to help advance this project.
+
+# Thanks to Peter Hinch on mqtt_as.py and mqtt_local.py
+Thanks to the amazing "mqtt_as" library written by Peter Hinch from UK. Forget about umqtt.simple and umqtt.robust, mqtt_as is totally on another level. Together with uasyncio library, it solves every problem I had.
+Github: https://github.com/peterhinch/micropython-mqtt 
 
 # Features
 - Support Relay (e.g. appliance control), Momentary Relay (e.g. garage door remote control, press/release) and contact switch (e.g. magnetic contact)
 - Only one single MQTT Topic is needed for both publishers and subscribers with the use of JSON.
 - Structure MQTT payload in JSON format to facilitate compatibility with mobile app "IoT MQTT Panel" leveraging JSON Path.
-- Automatic WiFi reconnection functionality to seamlessly reconnect in case of disconnection.
-- Automatic reconnection to the MQTT broker to maintain uninterrupted communication.
+- Automatic WiFi reconnection functionality to seamlessly reconnect in case of disconnection. (Thanks to Peter Hinch on mqtt_as library)
+- Automatic reconnection to the MQTT broker to maintain uninterrupted communication. (Thanks to Peter Hinch on mqtt_as library)
 - Quality of Service (QoS) level 1 to guarantee no message loss even in the event of MQTT broker downtime or WiFi disconnection.
-- Utilize the onboard LED to provide clear visual status indications: Operational (On), WiFi connection in progress (Flashing), or System halted (Off).
+- Utilize the onboard LED to provide clear visual status indications: Operational (On) or System halted (Off)
 - Provide support for relay switches, with the added capability to configure them as momentary switches, ideal for controlling garage doors with press/release functionality on remote control.
 - Support contact switches for status reporting, particularly useful for magnetic contact sensors.
-- Implement hardware safeguards to prevent relay burnout caused by flooded incoming messages in a single batch, such as after WiFi reconnection.
+- Implement hardware safeguards to prevent relay burnout caused by flooded incoming messages in a single batch, such as after WiFi reconnection. (Alternatively, you can use Peter Hinch's mqtt_as config["clean_init"])
 - Integrate hardware safeguards to prevent relay burnout in scenarios of excessive toggling, automatically resuming operation after a predefined interval.
 - Implement hardware safeguards to prevent message acceptance until a hardware reset if a predefined violation threshold is reached.
 - Ensure data usage protection by halting MQTT message publishing in the event of a fatal error until a hardware reset is performed.
@@ -27,11 +31,11 @@ This code is designed to meet the demands of DIY enthusiasts, it has undergone e
 - 4Channel Relay Module (e.g. Sainsmart ‎101-70-101 from Amazon)
 - Pico Breakout Board (e.g. Freenove FNK0081 from Amazon)
 
-# Does the code work on ESP32 or Arduino Nano RP2040?
-No idea. Maybe minor code changes is needed or maybe not.
+# Does the code work on ESP32, ESP8266, Pyboard?
+Only tested on Raspberry PicoW. Minor code changes is probably needed becuase of LED and PIN hardware calls. Indeed, LED calls should be fine because of mqtt_local from mqtt_as. It would be nice to abstract all the hardware calls to support all microcontrollers (contribution is welcome!). Other than that, I believe the rest of the code should be compatiable.
 
-# MQTT Library memory leak Fix
-This project relies on the "micropython-umqtt.simple" library for its operation. However, navigating through its various versions like "umqtt.simple2," "umqtt.robust," or "umqtt.robust2" might lead to confusion. Unfortunately, all four libraries suffer from memory leaks or frozen issues if you are using the sample code from Internet. To illustrate, both "umqtt.simple" (with try/except reconnect) and "umqtt.robust" for auto-reconnect failed to pass my test cases on Raspberry Pi Pico W. While they managed to reconnect successfully, they persisted in experiencing memory leaks after several disconnect/reconnect cycles.  To validate this, use router firewall to block MQTT traffic and/or disconnect WIFI from router. Although they did reconnect successfully, it continued to have memory leak after several disconnect/reconnect. You can repeat the firewall block and WIFI disconnection for multiple times and use HiveMQ web client to publish messages after disconnect/reconnect. Eventually, it will lead to "out of memory" error:
+# umqtt.simple(1or2) umqtt.robust(1or2) memory leak fix
+Originally, this project relies on the "micropython-umqtt.simple" library for its operation. However, navigating through its various versions like "umqtt.simple2," "umqtt.robust," or "umqtt.robust2" might lead to confusion. Unfortunately, all four libraries suffer from memory leaks or frozen issues. To illustrate, both "umqtt.simple" (with try/except reconnect) and "umqtt.robust" for auto-reconnect failed to pass my test cases on Raspberry Pi Pico W. While they managed to reconnect successfully, they persisted in experiencing memory leaks after several disconnect/reconnect cycles.  Eventually, it will lead to "out of memory" error:
 
        Traceback (most recent call last):
        File "<stdin>", line 47, in <module>
@@ -43,7 +47,18 @@ or RTOS heap memory after reconnecting during SSL handshake
        File "<stdin>", line 63, in <module>
        OSError: (-10368, 'MBEDTLS_ERR_X509_ALLOC_FAILED')
 
-You can easily print out the memory usage and see it the memory usage keeps climbing. To fix robust, the library has to be modified. For this project, in order to keep it simple, I am using "micropython-umqtt.simple" library (no change to lib is needed) and apply auto re-connect on top. Memory leak was caused by repeatedly opening new connections without proper closure in an exception handling scenario. No memory leak issue is found in MqttTinyController project.
+Although I was able to fix that, there are more problems on the test case 3:
+
+- Case 1: Auto re-connect when network fails:  Use firewall rules on your router to block traffic to broker after connection is established 
+- Case 2: Auto re-connect when Wifi fails (SSID is still available): Disconnect your PicoW using router admin
+- Case 3: Auto re-connect when Wifi totally gone (SSID is NOT available): Power off the router or change the SSID name of WiFi
+
+If you are using QoS1 on Case 3, the socket will hangs indefinitely. However, if you are using QoS0, it is fine but it defeats the purpose. The cause is the library uses blocking sockets with no timeout, Qos1 got stuck in wait_msg. It has been well documented in 2016:
+
+- https://github.com/micropython/micropython-lib/issues/103 (Qos1 sock WiFi is degraded)
+- https://github.com/micropython/micropython/issues/2568 (Mqtt Wifi dropped, timeout)
+
+Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test cases with QoS1
 
 # Important notes on QoS1 with Clear Session
 In MQTT specification, there is "Clear Session" option, the code uses Quality of Service (QoS) level 1 with clear session disabled. All your messages have use QoS1 to send, with client "Clear Session" set to FALSE when subscribe to the MQTT broker. For mobile phone app "IoT MQTT Panel", you need to uncheck the "Clear Session" option in "Additional options". 
