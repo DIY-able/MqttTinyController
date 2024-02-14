@@ -28,7 +28,7 @@ from collections import OrderedDict
 # Feb 09, 2024, v1.7   [DIYable] - Fixed bug on log publishing error to Mqtt broker in reconnect scenario
 # Feb 12, 2024, v1.8   [DIYable] - WIFI completely disconnected hangs on QoS1 (not able to fix, has to use QoS0 for this case)
 # Feb 13, 2024, v1.9   [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down
-# Feb 14, 2024, v2.0   [DIYable] - Publish only changed GPIO value in JSON instead of publishing full list except first run and force publish because during QoS1 outage, old value in the async queue can overwrite new value after reconnect
+# Feb 14, 2024, v2.0   [DIYable] - Onlu publish changed GPIO value in JSON instead of publishing full list except first run and force publish because during QoS1 outage, old value in async queue can overwrite new value after reconnect
                                     
 
 
@@ -201,7 +201,7 @@ def is_publish_gpio_status():
         is_publish = True
         is_full = False  # Only publish changed values
         
-    return { "is_publish": is_publish, "is_full" : is_full }
+    return { "is_publish": is_publish, "is_full" : is_full }   # Enum in micropython?
 
 
 # Get all GPIO status from the master dictionary for JSON publish
@@ -423,7 +423,7 @@ async def main(client):
                 mqtt_publish_stats.log_messages = []
                 
       
-        # Publish full list or partial list  to Mqtt broker based on business logic 
+        # Publish full list or partial list to Mqtt broker based on business logic 
         publish = is_publish_gpio_status()
         is_publish = publish["is_publish"]
         is_full = publish["is_full"]
