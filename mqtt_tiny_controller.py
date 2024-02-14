@@ -6,6 +6,7 @@ from mqtt_tiny_controller_config import *
 from mqtt_local import blue_led 
 from machine import Pin
 from collections import OrderedDict
+
 #
 # Description: 
 # MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches.
@@ -17,16 +18,19 @@ from collections import OrderedDict
 # Github: https://github.com/peterhinch/micropython-mqtt 
 
 # Change Log:
-# Mar 17, 2023, v1.0 [DIYable] - Based on umqtt sample, fixed memory error and added auto re-connect wifi/mqtt broker logic
-# Jan 30, 2024, v1.1 [DIYable] - Combined publish and subscribe in single file with JSON payload support mobile app "IoT MQTT Panel"
-# Feb 01, 2024, v1.2 [DIYable] - Added hardware burnout protection (for relays PIN.OUT only) using timer and counter
-# Feb 03, 2024, v1.3 [DIYable] - Added momentary switch for relay (useful for garage opener remote control)
-# Feb 04, 2024, v1.4 [DIYable] - Refactored code to use class MqttPublishStats and class MqttGpioHardware
-# Feb 06, 2024, v1.5 [DIYable] - Added onboard LED for status indicator passing method to WifiConnect() as delegate 
-# Feb 08, 2024, v1.6 [DIYable] - Refactored code from camelCase and PascalCase to snake_case basaed on PEP (Python Enhancement Proposal)
-# Feb 09, 2024, v1.7 [DIYable] - Fixed bug on log publishing error to Mqtt broker in reconnect scenario
-# Feb 12, 2024, v1.8 [DIYable] - WIFI completely disconnected hangs on QoS1 (not able to fix, has to use QoS0 for this case)
-# Feb 13, 2024, v1.9 [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down
+# Mar 17, 2023, v1.0   [DIYable] - Based on umqtt sample, fixed memory error and added auto re-connect wifi/mqtt broker logic
+# Jan 30, 2024, v1.1   [DIYable] - Combined publish and subscribe in single file with JSON payload support mobile app "IoT MQTT Panel"
+# Feb 01, 2024, v1.2   [DIYable] - Added hardware burnout protection (for relays PIN.OUT only) using timer and counter
+# Feb 03, 2024, v1.3   [DIYable] - Added momentary switch for relay (useful for garage opener remote control)
+# Feb 04, 2024, v1.4   [DIYable] - Refactored code to use class MqttPublishStats and class MqttGpioHardware
+# Feb 06, 2024, v1.5   [DIYable] - Added onboard LED for status indicator passing method to WifiConnect() as delegate 
+# Feb 08, 2024, v1.6   [DIYable] - Refactored code from camelCase and PascalCase to snake_case basaed on PEP (Python Enhancement Proposal)
+# Feb 09, 2024, v1.7   [DIYable] - Fixed bug on log publishing error to Mqtt broker in reconnect scenario
+# Feb 12, 2024, v1.8   [DIYable] - WIFI completely disconnected hangs on QoS1 (not able to fix, has to use QoS0 for this case)
+# Feb 13, 2024, v1.9   [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down
+# Feb 14, 2024, v2.0   [DIYable] - Publish only changed GPIO value in JSON instead of publishing full list except first run and force publish because during QoS1 outage, old value in the async queue can overwrite new value after reconnect
+                                    
+
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -84,21 +88,21 @@ def set_gpio_value_on_hardware(name, value):
             is_gpio_set = False
             message = "Warning: Skipping Gpio {} value change for hardware burnout protection, min interval between value change is {} seconds".format(name, hardware_modified_min_interval_in_seconds)
             log(message)
-            mqtt_publish_stats.is_force_publish = True
+            mqtt_publish_stats.is_force_publish = True   # Since we are ignoring the changes, client needs to be updated by force publish
             
         if (((time.time() - mqtt_gpio_hardware[name].last_modified_time) < hardware_modified_threshold_in_seconds) and mqtt_gpio_hardware[name].modified_counter > hardware_modified_max):
             is_gpio_set = False
             mqtt_gpio_hardware[name].violation_counter = mqtt_gpio_hardware[name].violation_counter + 1    # Store total number of violation will lead to permanent fail
             message = "Warning: Skipping Gpio {} value change for hardware burnout protection, number of change exceeded max threshold {} in {} seconds".format(name, hardware_modified_max, hardware_modified_threshold_in_seconds)
             log(message)
-            mqtt_publish_stats.is_force_publish = True
+            mqtt_publish_stats.is_force_publish = True   # Since we are ignoring the changes, client needs to be updated by force publish
         elif (((time.time() - mqtt_gpio_hardware[name].last_modified_time) > hardware_modified_threshold_in_seconds) and mqtt_gpio_hardware[name].modified_counter > 0):
             mqtt_gpio_hardware[name].modified_counter = 0
             
         if (mqtt_gpio_hardware[name].violation_counter > hardware_violation_max + 1):
             message = "Error: Gpio {} value change is permanently disabled (until hardware reset) for protection, number of violation exceeded {}".format(name, hardware_violation_max)
             log(message)
-            mqtt_publish_stats.is_force_publish = True
+            mqtt_publish_stats.is_force_publish = True   # Since we are ignoring the changes, client needs to be updated by force publish
             mqtt_gpio_hardware[name].is_modified_allowed = False
             
         if (is_gpio_set == True):
@@ -106,11 +110,8 @@ def set_gpio_value_on_hardware(name, value):
                 if (mqtt_gpio_hardware[name].is_momentary == True):
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=0)  # On (0)
                     time.sleep(momentary_switch_delay_in_seconds)
-                    Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=1)  # Off (1)
-    
-                    # Force publish for momentary switch - because if original status(int)=0, we switched to 1, then 0. 
-                    # when we call is_gpio_values_changed() we are not able to detect the hardware change and client won't get updated
-                    mqtt_publish_stats.is_force_publish = True  
+                    Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=1)  # Off (1)    
+                    mqtt_gpio_hardware[name].is_changed = True  #  Publish this GPIO (hardware detection won't work because PIN returns to the original state)
                 else: 
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=flip_value(value)) # Regular relay switch
                     
@@ -145,10 +146,14 @@ def is_gpio_values_changed():
     # Publish if memory value is different from the hardware GPIO value
     for x in merged_list:
         name = gpio_prefix+str(x)
-        if (get_current_gpio_value(name) != get_gpio_value_from_hardware(name)):
+        if (get_current_gpio_value(name) != get_gpio_value_from_hardware(name)):            
             update_gpio_status_from_hardware(name)
+            mqtt_gpio_hardware[name].is_changed = True
             is_changed = True
             print ("GPIO hardware value is changed")
+        elif (mqtt_gpio_hardware[name].is_changed == True):   # Special case: when momentary switch is toogled, hardware status returns to original state but it has been touched
+            is_changed = True
+            print ("GPIO value was changed (momentary switch)")
             
     return is_changed
            
@@ -163,6 +168,7 @@ def log(message):
 def is_publish_gpio_status():
 
     is_publish = False
+    is_full = False
     is_changed = is_gpio_values_changed()   # Check if any GPIO hardware value has changed compare to master copy in dictionary
     
     # Business logic safeguard to disable publishing in case of error
@@ -172,29 +178,34 @@ def is_publish_gpio_status():
         log("Error: Abnormal number of publish detected in a short interval, publishing is stopped until hardware restart")                   
     elif  (((time.time() - mqtt_publish_stats.last_published_time) > publish_threshold_in_seconds) and mqtt_publish_stats.publish_counter >=0):
         mqtt_publish_stats.publish_counter = 0  
-        
-    # If is_first_time_run == True, publish a copy of all status to Mqtt broker
-    # If publish_counter == -1 (error), it will skip publishing forever until hardware reset
-    # If last_routine_published_time exceeded defined time, then publish
-    # If is_force_publish == True, publish a copy of all status to Mqtt broker for force update (this is triggered by momentary relay in set_gpio_value_on_hardware)
-    if (mqtt_publish_stats.is_first_time_run == True):
+           
+    # Publish full list status to Mqtt broker first time running or forced publish, otherwise only send the changed values
+    if (mqtt_publish_stats.is_first_time_run == True):   
         mqtt_publish_stats.is_first_time_run = False
         log(f"Subscribed for ClientID: {mqtt_client_id.decode('utf-8')}")
+        print("Publish (First time), send full list")
         is_publish = True
-    elif (is_changed == True and mqtt_publish_stats.publish_counter >= 0):	
-        is_publish = True
-    elif (((time.time() - mqtt_publish_stats.last_routine_published_time) > routine_publish_in_seconds) and routine_publish_in_seconds > 0):
-        mqtt_publish_stats.last_routine_published_time = time.time()
-        is_publish = True
-    elif (mqtt_publish_stats.is_force_publish == True):
+        is_full = True
+    elif (mqtt_publish_stats.is_force_publish == True):                
         mqtt_publish_stats.is_force_publish = False
-        is_publish = True  
-    
-    return is_publish
+        print("Publish (Forced), send full list")
+        is_publish = True
+        is_full = True
+    elif (((time.time() - mqtt_publish_stats.last_routine_published_time) > routine_publish_in_seconds) and routine_publish_in_seconds > 0):
+        mqtt_publish_stats.last_routine_published_time = time.time()    # If last_routine_published_time exceeded defined time, then publish
+        print("Publish (Routine), send full list")
+        is_publish = True        
+        is_full = True
+    elif (is_changed == True and mqtt_publish_stats.publish_counter >= 0): # If publish_counter == -1 (error), it will skip publishing forever until hardware reset
+        print("Publish (Changed), only send changed values")
+        is_publish = True
+        is_full = False  # Only publish changed values
+        
+    return { "is_publish": is_publish, "is_full" : is_full }
 
 
 # Get all GPIO status from the master dictionary for JSON publish
-def get_all_gpio_status():    
+def get_gpio_status(full=False):    
 
     gpioStatus = OrderedDict()
     
@@ -209,10 +220,15 @@ def get_all_gpio_status():
         temp_list.append(a)
 
     # Sort the integer and then combined into OrderedDict, regular dictionary won't sort properly with JSON.dumps()
-    for x in sorted(temp_list):
+    for x in sorted(temp_list):        
         name = gpio_prefix+str(x)
-        gpioStatus[name] = mqtt_gpio_hardware[name].status
-    
+        if (full == False):
+            if (mqtt_gpio_hardware[name].is_changed == True):
+                gpioStatus[name] = mqtt_gpio_hardware[name].status
+                mqtt_gpio_hardware[name].is_changed = False
+        else:
+            gpioStatus[name] = mqtt_gpio_hardware[name].status
+        
     return gpioStatus
 
 
@@ -246,8 +262,7 @@ class GpioProperty:
     violation_counter = 0  # Violation counter for GPIO (only for relays to use only, hardware burnout protection)
     is_modified_allowed = False # Is hardware PIN is allowed to set (only for relays, hardware burnout protection)
     is_momentary = False       # Is hardware PIN is defined as momentary (only for relays, e.g. switch it on, it will turn off automatically)
-               
-               
+    is_changed = False         # For both contacts and relays to publish only changed GPIO value (no need to publish full list)
 
 #  ----------------------------------------------------------------------------                 
 
@@ -406,19 +421,29 @@ async def main(client):
             for x in mqtt_publish_stats.log_messages:
                 await client.publish(mqtt_topic, x, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
                 mqtt_publish_stats.log_messages = []
-                                
-        # Check GPIO hardware changes and with other conditions are met, then publish JSON
-        if (is_publish_gpio_status() == True):
+                
+      
+        # Publish full list or partial list  to Mqtt broker based on business logic 
+        publish = is_publish_gpio_status()
+        is_publish = publish["is_publish"]
+        is_full = publish["is_full"]
+        json_status = None
+        
+        if (is_publish and is_full):
+             json_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
+        elif (is_publish and not is_full):
+             json_status = json.dumps(get_gpio_status(False))  # Get the list of changed values in JSON
+             
+        if (is_publish == True):                
             mqtt_publish_stats.publish_counter = mqtt_publish_stats.publish_counter + 1 
             mqtt_publish_stats.last_published_time = time.time()
-            jsonStatus = json.dumps(get_all_gpio_status())   # JSON message
-            await client.publish(mqtt_topic, jsonStatus, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false            
-
+            await client.publish(mqtt_topic, json_status, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false              
 
 #  ----------------------------------------------------------------------------
 
 mqtt_publish_stats = None
 mqtt_gpio_hardware = None
+
 init()
 
 # Set up client. Enable optional debug statements.
@@ -434,6 +459,7 @@ finally:  # Prevent LmacRxBlk:1 errors.
     blue_led(False)
     client.close()
     asyncio.new_event_loop()
+
 
 
 
