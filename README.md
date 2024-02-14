@@ -99,26 +99,31 @@ Technically speaking, you can put the scheduling code as part of the microcontro
 
 ### Action A: Client sends a JSON message {"GP16":1} to MQTT broker
 - PicoW Hardware: GP16 relay is set to ON
--        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 1, "GP17": 0, "GP18": 0, "GP19": 0}
+-        Response: {"GP16": 1}
 - The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 
 ### Action B: Client sends a JSON message {"GP16":0} to MQTT broker
 - PicoW Hardware: GP16 relay is set to OFF 
--        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
+-        Response: {"GP16": 0}
 - The code sends the response to MQTT broker, all subscribers have the updated message with GP16=0
 
 ### Action C: Client sends a JSON message {"GP18":1} to MQTT broker
 - PicoW Hardware: Toggle GP18 momentary relay by first setting the relay GPIO18 to ON, after 2 seconds, set GPIO18 relay to OFF
--        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
+-        Response: {"GP18": 0}
 - The code sends the response to MQTT broker, all subscribers have the final status with GP18=0
 
 ### Action D: Contact switch GP1 is connected physically on the hardware GPIO board
--        Response: {"GP0": 0, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
+-        Response: {"GP1": 1}
 - The code sends the response to MQTT broker, all subscribers have the updated message with GP1=1
 
-### Action E: Combined Action A and Action D in sequence
--        Response: {"GP0": 0, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 1, "GP17": 0, "GP18": 0, "GP19": 0}
+### Action E: Combined Action A and Action D in sequence very quickly
+-        Response: {"GP1": 1, "GP16": 1}
 - The code sends the response to MQTT broker, all subscribers have the updated message with GP1=1 and GP16=1
+
+### Action F: First time running
+-        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
+- The code sends the response to MQTT broker, all subscribers have the FULL list status
+
 
 # Mobile App "IoT MQTT Panel" Setup by Example
 
