@@ -134,7 +134,7 @@ Technically speaking, you can put the scheduling code as part of the microcontro
        Payload On: 1, Payload Off: 0
        "Payload is JSON Data" is Checked
        JsonPath for subscribe: $.GP16
-       JSON pattern for publish: {"GP16":<payload>}
+       JSON pattern for publish: {"GP16": <payload>}
        Qos sets to 1
        Retain: unchecked
 ### Button: (For Momentary Switch) 
