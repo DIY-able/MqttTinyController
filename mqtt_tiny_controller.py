@@ -28,9 +28,8 @@ from collections import OrderedDict
 # Feb 09, 2024, v1.7   [DIYable] - Fixed bug on log publishing error to Mqtt broker in reconnect scenario
 # Feb 12, 2024, v1.8   [DIYable] - WIFI completely disconnected hangs on QoS1 (not able to fix, has to use QoS0 for this case)
 # Feb 13, 2024, v1.9   [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down
-# Feb 14, 2024, v2.0   [DIYable] - Onlu publish changed GPIO value in JSON instead of publishing full list except first run and force publish because during QoS1 outage, old value in async queue can overwrite new value after reconnect
+# Feb 17, 2024, v2.0   [DIYable] - Only publish changed GPIO value in JSON instead of publishing full list except first run and force publish because during QoS1 outage, old value in async queue can overwrite new value after reconnect
                                     
-
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -459,7 +458,6 @@ finally:  # Prevent LmacRxBlk:1 errors.
     blue_led(False)
     client.close()
     asyncio.new_event_loop()
-
 
 
 
