@@ -77,6 +77,9 @@ If you have multiple clients connecting to MQTT broker with the same Client ID, 
 # Can relay on/off be scheduled?
 Technically speaking, you can put the scheduling code as part of the microcontroller. In my opinion, scheduling should not be part of it. The sole responsibility for this code is to control the hardware and report the hardware status using MQTT. To do scheduling, you can easily write an Azure Function using MQTT NET or Amazon AWS Lambda. The CRON expression for example, should be published/subscribed as another MQTT topic.
 
+# Starting up with weak WIFI or power outage reboot
+If you powerup PicoW without WIFI or not having a good connection, "mqtt_as" would quit and shuts down. According to Peter Hinch, this behavior is by design. However, it is possible during power outage both Wifi router and PicoW goes down at the same time but when power is restored, PicoW starts before Wifi is available and it won't work. The workaround is to add loop to connect wifi for x number of times (wifi_max_wait in config) before calling "mqtt_as".
+
 # Installation for PicoW
 1. Use Micropython bootloader RPI_PICO_W-20240105-v1.22.1.uf2 or latest version
 2. Use Thonny to install the .uf2 on PicoW
@@ -124,23 +127,29 @@ Technically speaking, you can put the scheduling code as part of the microcontro
 -        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
 - The code sends the response to MQTT broker, all subscribers have the FULL list status
 
+### Action G: Client sends a message "alive" to MQTT broker
+-        Response: Yes, I am alive. Uptime=1 days 5 hrs 10 mins
+- The code sends the response to MQTT broker, notifying subscribers the device is still up and running
 
 # Mobile App "IoT MQTT Panel" Setup by Example
 
 - GP16, GP17 are defined as Relay
 - GP18, GP19 are defined as Momentary Relay
 - GP0, GP1, GP2, GP3 are defined as Contact Switch
-### Button: (For Relay Switch) 
+### Switch: (For Relay Switch) 
        Payload On: 1, Payload Off: 0
        "Payload is JSON Data" is Checked
        JsonPath for subscribe: $.GP16
        JSON pattern for publish: {"GP16": <payload>}
        Qos sets to 1
        Retain: unchecked
-### Button: (For Momentary Switch) 
+### Switch: (For Momentary Switch) 
        Exactly same as setting up Relay Switch, just replace GP16 with GP18
 ### LED Indicator: (For magentic contact)
        Payload On: 1,  Payload Off: 0
        "Payload is JSON Data" is Checked
        JsonPath for subscribe: $.GP1
        QoS sets to 1
+### Button: (For Checking Alive) 
+       Payload: alive
+       Qos sets to 1
