@@ -29,7 +29,9 @@ from collections import OrderedDict
 # Feb 12, 2024, v1.8   [DIYable] - WIFI completely disconnected hangs on QoS1 (not able to fix, has to use QoS0 for this case)
 # Feb 13, 2024, v1.9   [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down
 # Feb 17, 2024, v2.0   [DIYable] - Only publish changed GPIO value in JSON instead of publishing full list except first run and force publish because during QoS1 outage, old value in async queue can overwrite new value after reconnect
-                                    
+# Feb 18, 2024, v2.0.1 [DIYable] - When connection is very weak on FIRST time starting up, "mqtt_as" can quit without retrying. Added x times of retry using network.WLAN(network.STA_IF) before using "mqtt_as" code
+# Feb 19, 2024, v2.0.2 [DIYable] - Added total uptime in stats and publish this in routing publishing and incoming "alive" message
+
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -132,7 +134,7 @@ def flip_value(value):
                
 # Print memory usage                
 def print_memory_usage():
-    print(f"Memory usage: {get_memory_usage()}")
+    print(f"Memory usage: {print_memory_usage()}")
 
 # Check if the hardware GPIO value are different from in memory GPIO in dictionary
 def is_gpio_values_changed():    
@@ -192,6 +194,7 @@ def is_publish_gpio_status():
         is_full = True
     elif (((time.time() - mqtt_publish_stats.last_routine_published_time) > routine_publish_in_seconds) and routine_publish_in_seconds > 0):
         mqtt_publish_stats.last_routine_published_time = time.time()    # If last_routine_published_time exceeded defined time, then publish
+        log(f"Routine publishing, {print_uptime()}, Outages={mqtt_publish_stats.outage_counter}")
         print("Publish (Routine), send full list")
         is_publish = True        
         is_full = True
@@ -230,8 +233,13 @@ def get_gpio_status(full=False):
         
     return gpioStatus
 
-
-def get_memory_usage(full=False):
+def print_uptime():
+    total_uptime = (time.time() - mqtt_publish_stats.startup_time)
+    uptime_days, uptime_hours, uptime_minutes, uptime_seconds = calculate_time(total_uptime)
+    return (f"Uptime={uptime_days} days {uptime_hours} hrs {uptime_minutes} mins")
+    
+# Print memory usage to check memory leak 
+def print_memory_usage(full=False):
   gc.collect()
   F = gc.mem_free()
   A = gc.mem_alloc()
@@ -240,15 +248,25 @@ def get_memory_usage(full=False):
   if not full: return P
   else : return ('Total:{0} Free:{1} ({2})'.format(T,F,P))
   
+# Calculate days, hrs, min, sec without using any library 
+def calculate_time(seconds):    
+    days = seconds // (24 * 3600)  # Calculate days
+    seconds %= (24 * 3600)    
+    hours = seconds // 3600  # Calculate hours
+    seconds %= 3600    
+    minutes = seconds // 60  # Calculate minutes    
+    seconds %= 60  # Calculate remaining seconds
+    return days, hours, minutes, seconds
+
 
 # Publish Stats class to store all the global stats in mqtt_publish_stats
 class PublishStats:    
-    last_pinged_time = 0
     last_published_time = 0
     last_routine_published_time = 0
     publish_counter = 0
     is_force_publish = False
     is_first_time_run = False
+    startup_time = 0
     log_messages = []
     outage_counter = 0
     
@@ -276,6 +294,9 @@ async def messages(client):
         message = msg.decode()
         if ((not message.startswith('Subscribed:')) and (not message.startswith('Warning:')) and (not message.startswith('Error:'))):
             print(f"Callback message: {message}")
+     
+        if (message == "alive"):
+            log(f"Yes, I am alive. {print_uptime()}")
      
         is_message_json = False
      
@@ -315,6 +336,30 @@ async def up(client):
         print(f"Connected for ClientID: {mqtt_client_id.decode('utf-8')}")
         await client.subscribe(mqtt_topic, mqtt_qos)
                
+#  ----------------------------------------------------------------------------      
+
+def startup_connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.config(pm = 0xa11140) # Diable powersave mode
+    wlan.connect(wifi_ssid, wifi_pass)
+
+    max_wait = wifi_max_wait
+    while max_wait > 0:
+        if wlan.status() < 0 or wlan.status() >= 3:
+            break
+        max_wait -= 1
+        print('Device started: Waiting for connection...')
+        time.sleep(1)
+
+    #Handle connection error
+    if wlan.status() != 3:
+        raise RuntimeError('Wifi connection permanently Failed')
+    else:
+        print('Wifi Connected')
+        print(wlan.ifconfig())
+        
+    return wlan
 
 #  ----------------------------------------------------------------------------      
 # init
@@ -374,13 +419,13 @@ def init():
 
         
     # init stats
-    mqtt_publish_stats = PublishStats()
-    mqtt_publish_stats.last_pinged_time = time.time() # For keep alive 
+    mqtt_publish_stats = PublishStats()    
     mqtt_publish_stats.last_published_time = time.time()
     mqtt_publish_stats.last_routine_published_time = time.time()
     mqtt_publish_stats.publish_counter = 0    # If it's -1, it errors out and stops publishing forever
     mqtt_publish_stats.is_force_publish = False
     mqtt_publish_stats.is_first_time_run = True    # First time init to true
+    mqtt_publish_stats.startup_time = time.time() 
             
 
 #  ----------------------------------------------------------------------------      
@@ -445,19 +490,22 @@ mqtt_gpio_hardware = None
 
 init()
 
-# Set up client. Enable optional debug statements.
-MQTTClient.DEBUG = True
-client = MQTTClient(config)
+wlan = startup_connect_wifi()   # If you have strong wifi when starting up, this is not needed, "mqtt_as" is based on having good connection when starting up.
+if wlan.isconnected():             
+    
+    # Set up client. Enable optional debug statements.
+    MQTTClient.DEBUG = True
+    client = MQTTClient(config)
 
-try:
-    print_memory_usage()
-    asyncio.run(main(client))
-finally:  # Prevent LmacRxBlk:1 errors.
-    print("Shutting down....")
-    print_memory_usage()        
-    blue_led(False)
-    client.close()
-    asyncio.new_event_loop()
+    try:
+        print_memory_usage()
+        asyncio.run(main(client))
+    finally:  # Prevent LmacRxBlk:1 errors.
+        print("Shutting down....")
+        print_memory_usage()        
+        blue_led(False)
+        client.close()
+        asyncio.new_event_loop()
 
 
 
