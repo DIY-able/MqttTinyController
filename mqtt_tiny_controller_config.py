@@ -1,6 +1,7 @@
 # Wifi and Broker settings
 wifi_ssid = "xxxxxxxxxxxxxxxxxxx"
 wifi_pass = "yyyyyyyyyyyyyyyyyyyy"
+wifi_max_wait = 30   # First time start up to connect Wifi
 broker_server = "zzzzzzzzzzzzzzzzzzzzzzzzz.hivemq.cloud"
 broker_user = "aaaaaaaa"
 broker_pass = "bbbbbbbb"
