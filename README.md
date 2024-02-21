@@ -2,9 +2,7 @@
 MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches. Support JSON payload for free mobile app such as "IoT MQTT Panel".
 
 # Project
-Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases. 
-
-Capable of operating continuously without interruption, even in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling and potentially starts a fire in your home, this offers a layer of protection. While the code may not be entirely bulletproof, your input and contributions for enhancement are greatly appreciated. Please feel free to share any improvements you identify to help advance this project.
+Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, even in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling and potentially starts a fire in your home, this offers a layer of protection. While the code may not be entirely bulletproof, your input and contributions for enhancement are greatly appreciated. Please feel free to share any improvements you identify to help advance this project.
 
 # Thanks to Peter Hinch on mqtt_as.py and mqtt_local.py
 Thanks to the amazing "mqtt_as" library written by Peter Hinch from UK. Forget about umqtt.simple and umqtt.robust, mqtt_as is totally on another level. Together with uasyncio library, it solves every problem I had.
@@ -25,6 +23,9 @@ Github: https://github.com/peterhinch/micropython-mqtt
 - Implement hardware safeguards to prevent message acceptance until a hardware reset if a predefined violation threshold is reached.
 - Ensure data usage protection by halting MQTT message publishing in the event of a fatal error until a hardware reset is performed.
 - Option to regularly publish hardware status to MQTT broker, broadcasting to all clients at predefined intervals for comprehensive monitoring and control.
+- Get stats like total uptime, outages 
+- Get temperature reading using the Pico onboard sensor
+- Get public IP address of your router
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
@@ -32,7 +33,7 @@ Github: https://github.com/peterhinch/micropython-mqtt
 - Pico Breakout Board (e.g. Freenove FNK0081 from Amazon)
 
 # Does the code work on ESP32, ESP8266, Pyboard?
-Only tested on Raspberry PicoW. Minor code changes is probably needed becuase of LED and PIN hardware calls. Indeed, LED calls should be fine because of mqtt_local from mqtt_as. It would be nice to abstract all the hardware calls to support all microcontrollers (contribution is welcome!). Other than that, I believe the rest of the code should be compatiable.
+Only tested on Raspberry PicoW. The onboard LED and tempeature sensor code has been moved to mqtt_local.py (inherited from mqtt_as project). Minor code changes or implementation maybe needed, it would be nice to abstract all the hardware calls to support all microcontrollers (contribution is welcome!). Other than that, I believe the rest of the code should be compatiable.
 
 # umqtt.simple(1or2) umqtt.robust(1or2) memory leak fix
 Originally, this project relies on the "micropython-umqtt.simple" library for its operation. However, navigating through its various versions like "umqtt.simple2," "umqtt.robust," or "umqtt.robust2" might lead to confusion. Unfortunately, all four libraries suffer from memory leaks or frozen issues. To illustrate, both "umqtt.simple" (with try/except reconnect) and "umqtt.robust" for auto-reconnect failed to pass my test cases on Raspberry Pi Pico W. While they managed to reconnect successfully, they persisted in experiencing memory leaks after several disconnect/reconnect cycles.  Eventually, it will lead to "out of memory" error:
@@ -127,9 +128,17 @@ If you powerup PicoW without WIFI or not having a good connection, "mqtt_as" wou
 -        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
 - The code sends the response to MQTT broker, all subscribers have the FULL list status
 
-### Action G: Client sends a message "alive" to MQTT broker
--        Response: Yes, I am alive. Uptime=1 days 5 hrs 10 mins
-- The code sends the response to MQTT broker, notifying subscribers the device is still up and running
+### Action G: Client sends a message {"CMD":"stats"} to MQTT broker
+-        Response: Uptime=1 days 5 hrs, Outages=0, Mem=32.9%, Temp=18.6C/65.5F
+- The code sends the response to MQTT broker, notifying subscribers the device is still up and running with stats
+
+### Action I: Client sends a message {"CMD":"getip"} to MQTT broker
+-        Response: 20.114.152.56
+- The code seneds the response to MQTT broker, publishing the public IP where your Microcontroller is running
+
+### Action J: Client sends a message {"CMD":"refresh"} to MQTT broker
+-        Response: {"GP0": 1, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
+- The code sends the response to MQTT broker, all subscribers have the FULL list status, in this example GP0=1 and GP1=1
 
 # Mobile App "IoT MQTT Panel" Setup by Example
 
@@ -150,6 +159,15 @@ If you powerup PicoW without WIFI or not having a good connection, "mqtt_as" wou
        "Payload is JSON Data" is Checked
        JsonPath for subscribe: $.GP1
        QoS sets to 1
-### Button: (For Checking Alive) 
-       Payload: alive
-       Qos sets to 1
+### Button: (For Statistics)
+       Name: Stats
+       Payload: {"CMD":"stats"}
+       Qos sets to 0
+### Button: (For Getting IP address)
+       Name: GetIP
+       Payload: {"CMD":"getip"}
+       Qos sets to 0
+### Button: (For Refresh All GPIO)
+       Name: Refresh All GPIO
+       Payload: {"CMD":"refresh"}
+       Qos sets to 0
