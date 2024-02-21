@@ -2,30 +2,31 @@
 MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches. Support JSON payload for free mobile app such as "IoT MQTT Panel".
 
 # Project
-Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, even in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling and potentially starts a fire in your home, this offers a layer of protection. While the code may not be entirely bulletproof, your input and contributions for enhancement are greatly appreciated. Please feel free to share any improvements you identify to help advance this project.
+Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. 
+
+It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, even in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling and potentially starts a fire in your home, this offers a layer of protection. While the code may not be entirely bulletproof, your input and contributions for enhancement are greatly appreciated. Please feel free to share any improvements you identify to help advance this project.
 
 # Thanks to Peter Hinch on mqtt_as.py and mqtt_local.py
 Thanks to the amazing "mqtt_as" library written by Peter Hinch from UK. Forget about umqtt.simple and umqtt.robust, mqtt_as is totally on another level. Together with uasyncio library, it solves every problem I had.
 Github: https://github.com/peterhinch/micropython-mqtt 
 
 # Features
-- Support Relay (e.g. appliance control), Momentary Relay (e.g. garage door remote control, press/release) and contact switch (e.g. magnetic contact)
+- Support relay switches (e.g. appliance control) and contact switches (e.g. magnetic contact)
+- Capability to configure relay switches as momentary switches (e.g. garage doors with press/release functionality on remote control)
 - Only one single MQTT Topic is needed for both publishers and subscribers with the use of JSON.
 - Structure MQTT payload in JSON format to facilitate compatibility with mobile app "IoT MQTT Panel" leveraging JSON Path.
 - Automatic WiFi reconnection functionality to seamlessly reconnect in case of disconnection. (Thanks to Peter Hinch on mqtt_as library)
 - Automatic reconnection to the MQTT broker to maintain uninterrupted communication. (Thanks to Peter Hinch on mqtt_as library)
 - Quality of Service (QoS) level 1 to guarantee no message loss even in the event of MQTT broker downtime or WiFi disconnection.
-- Utilize the onboard LED to provide clear visual status indications: Operational (On) or System halted (Off)
-- Provide support for relay switches, with the added capability to configure them as momentary switches, ideal for controlling garage doors with press/release functionality on remote control.
-- Support contact switches for status reporting, particularly useful for magnetic contact sensors.
+- Utilize the onboard LED to provide clear visual status indications: Operational, System halted or Connecting
 - Implement hardware safeguards to prevent relay burnout caused by flooded incoming messages in a single batch, such as after WiFi reconnection. (Alternatively, you can use Peter Hinch's mqtt_as config["clean_init"])
 - Integrate hardware safeguards to prevent relay burnout in scenarios of excessive toggling, automatically resuming operation after a predefined interval.
 - Implement hardware safeguards to prevent message acceptance until a hardware reset if a predefined violation threshold is reached.
 - Ensure data usage protection by halting MQTT message publishing in the event of a fatal error until a hardware reset is performed.
 - Option to regularly publish hardware status to MQTT broker, broadcasting to all clients at predefined intervals for comprehensive monitoring and control.
-- Get stats like total uptime, outages 
-- Get temperature reading using the Pico onboard sensor
-- Get public IP address of your router
+- Retrieve statistics such as total uptime and outage occurrences.
+- Obtain temperature readings using the onboard sensor of the Pico.
+- Retrieve the public IP address of your router.
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
@@ -76,10 +77,14 @@ In MQTT specification, a message can be published to MQTT broker on a Topic with
 If you have multiple clients connecting to MQTT broker with the same Client ID, unexpected behavior can happen. For example, you configured mobile app "IoT MQTT Panel" with clientID = "MyHomeClient" and PicoW is using the same clientID. Mobile app is able to publish the message, but PicoW subscription will fail on message call back. Please make sure each device or client have a unique ID.
 
 # Can relay on/off be scheduled?
-Technically speaking, you can put the scheduling code as part of the microcontroller. In my opinion, scheduling should not be part of it. The sole responsibility for this code is to control the hardware and report the hardware status using MQTT. To do scheduling, you can easily write an Azure Function using MQTT NET or Amazon AWS Lambda. The CRON expression for example, should be published/subscribed as another MQTT topic.
+From a technical standpoint, it's feasible to integrate the scheduling code into the microcontroller. However, I believe that scheduling shouldn't be its primary function. The microcontroller's main responsibility should revolve around hardware control and reporting hardware status through MQTT. For scheduling tasks, a more suitable approach would be to develop an Azure Function using MQTT NET or utilize Amazon AWS Lambda. For instance, the CRON expression could be managed through publishing/subscribing to a separate MQTT topic.
 
 # Starting up with weak WIFI or power outage reboot
-If you powerup PicoW without WIFI or not having a good connection, "mqtt_as" would quit and shuts down. According to Peter Hinch, this behavior is by design. However, it is possible during power outage both Wifi router and PicoW goes down at the same time but when power is restored, PicoW starts before Wifi is available and it won't work. The workaround is to add loop to connect wifi for x number of times (wifi_max_wait in config) before calling "mqtt_as".
+When you power up the PicoW without Wi-Fi or without a stable connection, the 'mqtt_as' module quits and shuts down. This behavior, as explained by Peter Hinch, is intentional. However, in cases of a power outage where both the Wi-Fi router and PicoW lose power simultaneously, upon restoration of power, the PicoW might start up before the Wi-Fi network is fully available, resulting in it being unable to function properly. To address this issue, a workaround is to implement a retry loop to attempt to connect to Wi-Fi a specified number of times (determined by the 'wifi_max_wait' parameter in the configuration) before initializing the 'mqtt_as' module.
+
+# WPA3 issue
+If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW may experience connectivity issues. Switching the settings back to "WPA2 only" resolves this issue.
+
 
 # Installation for PicoW
 1. Use Micropython bootloader RPI_PICO_W-20240105-v1.22.1.uf2 or latest version
