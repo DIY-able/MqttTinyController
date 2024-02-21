@@ -6,7 +6,9 @@ from sys import platform, implementation
 # ESP32 is assumed to have user supplied active low LED's on same pins.
 # Call with blue_led(True) to light
 
+# -----------------------------------------------------------------------------
 if platform == 'esp8266' or platform == 'esp32':
+    
     from machine import Pin
     def ledfunc(pin, active=0):
         pin = pin
@@ -17,9 +19,22 @@ if platform == 'esp8266' or platform == 'esp32':
     blue_led = ledfunc(Pin(2, Pin.OUT, value = 1))  # Message received
     # Example of active high LED on UM Feather S3
     # blue_led = ledfunc(Pin(13, Pin.OUT, value = 0), 1)  # Message received ESP32-S3
+    
+    # ---------------------------------------------------
+    
     def get_temperature():
-        return "N/A"    
+        return "N/A"
+    
+    def toggle_onboard_led():
+        return None
+    
+    def set_onboard_led(value):
+        blue_led(value)        
+    
+# -----------------------------------------------------------------------------
+
 elif platform == 'pyboard':
+    
     from pyb import LED
     def ledfunc(led, init):
         led = led
@@ -29,11 +44,25 @@ elif platform == 'pyboard':
         return func
     wifi_led = ledfunc(LED(1), 1)
     blue_led = ledfunc(LED(3), 0)
+    
+    # ---------------------------------------------------
+    
     def get_temperature():
-        return "N/A"    
+        return "N/A"
+    
+    def toggle_onboard_led():
+        return None
+    
+    def set_onboard_led(value):
+        blue_led(value)        
+    
+# -----------------------------------------------------------------------------
+
 elif platform == 'rp2':
+    
     from machine import Pin
     import machine
+    
     def ledfunc(pin):
         pin = pin
         def func(v):
@@ -43,6 +72,8 @@ elif platform == 'rp2':
     LED = 'LED' if 'Pico W' in implementation._machine else 25
     blue_led = ledfunc(Pin(LED, Pin.OUT, value = 0))  # Message received
     
+    # ---------------------------------------------------
+
     def get_temperature():
         try:
             sensor = machine.ADC(4)
@@ -53,9 +84,32 @@ elif platform == 'rp2':
             return f"{temp_celcius}C/{temp_fahrenheit}F"
         except Exception as e:
             return "N/A"
+        
+    def toggle_onboard_led():
+        onboard_led = Pin(LED, Pin.OUT)
+        if (onboard_led.value() is not None):
+            if (onboard_led.value() == 1):     # Technically we can use .toggle()
+                onboard_led.off()
+            elif (onboard_led.value() == 0):                
+                onboard_led.on()
+    
+    def set_onboard_led(value):
+        blue_led(value)
+        
+# -----------------------------------------------------------------------------
+
 else:  # Assume no LEDs
+    
     wifi_led = lambda _ : None
     blue_led = wifi_led
+    
+    # ---------------------------------------------------
+    
     def get_temperature():
         return "N/A"
 
+    def toggle_onboard_led():
+        return None
+    
+    def set_onboard_led(value):
+        blue_led(value)    

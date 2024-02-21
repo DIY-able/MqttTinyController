@@ -3,7 +3,7 @@ import random, json, re, gc, os, machine
 import uasyncio as asyncio
 from mqtt_as import MQTTClient, config
 from mqtt_tiny_controller_config import *
-from mqtt_local import blue_led, get_temperature
+from mqtt_local import get_temperature, toggle_onboard_led, set_onboard_led
 from machine import Pin
 from collections import OrderedDict
 
@@ -18,21 +18,21 @@ from collections import OrderedDict
 # Github: https://github.com/peterhinch/micropython-mqtt 
 
 # Change Log:
-# Mar 17, 2023, v1.0   [DIYable] - Based on umqtt sample, fixed memory error and added auto re-connect wifi/mqtt broker logic
-# Jan 30, 2024, v1.1   [DIYable] - Combined publish and subscribe with JSON payload to support mobile app "IoT MQTT Panel"
+# Mar 17, 2023, v1.0   [DIYable] - Based on umqtt sample, fixed memory errors and implementing automatic reconnection logic for both WiFi and MQTT broker.
+# Jan 30, 2024, v1.1   [DIYable] - Integrated JSON payload support to accommodate the mobile app "IoT MQTT Panel."
 # Feb 01, 2024, v1.2   [DIYable] - Added hardware burnout protection (for relays PIN.OUT only) 
-# Feb 03, 2024, v1.3   [DIYable] - Added momentary switch for relay (useful for garage opener remote control)
+# Feb 03, 2024, v1.3   [DIYable] - Introduced momentary switch feature for relays (beneficial for garage opener remote control)
 # Feb 04, 2024, v1.4   [DIYable] - Refactored code to use class MqttPublishStats and class MqttGpioHardware
-# Feb 06, 2024, v1.5   [DIYable] - Added onboard LED for status indicator passing method to WifiConnect() as delegate 
-# Feb 08, 2024, v1.6   [DIYable] - Refactored code from camelCase and PascalCase to snake_case basaed on PEP (Python Enhancement Proposal)
-# Feb 09, 2024, v1.7   [DIYable] - Fixed bug on log publishing error to Mqtt broker in reconnect scenario
-# Feb 12, 2024, v1.8   [DIYable] - WIFI completely disconnected hangs on QoS1 (not able to fix, has to use QoS0 for this case)
-# Feb 13, 2024, v1.9   [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down
-# Feb 17, 2024, v2.0   [DIYable] - Only publish changed GPIO value in JSON instead of publishing full list except first run and republish because during QoS1 outage, old value in async queue can overwrite new value after reconnect
-# Feb 18, 2024, v2.0.1 [DIYable] - When wifi is weak upon initial startup or reboot following a power outage where wifi is unavailable yet, "mqtt_as" can quit without retrying. Added retry loop before calling "mqtt_as" code
-# Feb 19, 2024, v2.0.2 [DIYable] - Added total uptime in stats and publish this in routing publishing and incoming "stats" message
-# Feb 20, 2024, v2.0.3 [DIYable] - Added commands "stats", "refresh", "getip" and refactored some code using Python standard. Added flashing LED for powering up and machine.reset for permanent failure
-
+# Feb 06, 2024, v1.5   [DIYable] - Incorporated an onboard LED for status indication.
+# Feb 08, 2024, v1.6   [DIYable] - Refactored code formatting from camelCase and PascalCase to snake_case following PEP (Python Enhancement Proposal) guidelines.
+# Feb 09, 2024, v1.7   [DIYable] - Resolved a bug related to log publishing errors to the MQTT broker during reconnection scenarios.
+# Feb 12, 2024, v1.8   [DIYable] - Addressed the issue where complete WiFi disconnection would cause hangs on QoS1, though unable to resolve, mitigated by switching to QoS0 in such cases.
+# Feb 13, 2024, v1.9   [DIYable] - Rewrote code using mqtt_as (Thanks to Peter Hinch's amazing work on mqtt_as!) and uasyncio lib to solve problem of QoS1 socket hangs issue when WIFI is down.
+# Feb 17, 2024, v2.0   [DIYable] - Optimized JSON publishing by only transmitting changed GPIO values, except during initial runs or reconnections after QoS1 outages to prevent old values from overriding new ones.
+# Feb 18, 2024, v2.0.1 [DIYable] - Implemented a retry loop before invoking "mqtt_as" code to address situations where weak WiFi signal or power outages lead to premature quitting.
+# Feb 19, 2024, v2.0.2 [DIYable] - Included total uptime statistics, outage count and onboard tempeature in the published data. 
+# Feb 20, 2024, v2.0.3 [DIYable] - Added commands "stats", "refresh", "getip" and Implemented flashing LED for powering up and machine.reset for permanent failure.
+# Feb 21, 2024, v2.0.4 [DIYable] - Added async flashing status for onboard LED before fully connected. Removed blue_led() from code and added toggle_onboard_led, set_onboard_led to mqtt_local
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -42,8 +42,9 @@ from collections import OrderedDict
 # https://mpython.readthedocs.io/en/master/library/mPython/umqtt.simple.html
 # https://github.com/micropython/micropython-lib/issues/103 (Qos1 sock WiFi is degraded)
 # https://github.com/micropython/micropython/issues/2568 (Mqtt Wifi dropped, timeout)
-# https://github.com/peterhinch/micropython-mqtt (Peter Hinch amazing "mqtt_as", the resilient asynchronous MQTT driver. Recovers from WiFi and broker outages)
+# https://github.com/peterhinch/micropython-mqtt (Peter Hinch's "mqtt_as", the resilient asynchronous MQTT driver. Recovers from WiFi and broker outages)
 
+#  ----------------------------------------------------------------------------
 
 # Update status (dictionary in memory) from GPIO hardware value
 # e.g. method("GP15")
@@ -67,7 +68,7 @@ def get_gpio_value_from_hardware(name):
         value = flip_value(mqtt_gpio_hardware[name].pin.value())            
     return value
 
-# Convert Name(string to Pin(int)
+# Convert Name(string) to Pin(int)
 # e.g. method("GP15") returns 15
 def get_gp_name_to_pin(name):
     start = name.find(gpio_prefix)+len(gpio_prefix)
@@ -78,8 +79,11 @@ def get_gp_name_to_pin(name):
 # Set GPIO value on hardware
 # e.g. method("GP15", 1) 
 def set_gpio_value_on_hardware(name, value):
-    # value = 0, 0V on output -> the led on PicoW board will be off, Relay = ON
-    # value = 1, 3.3V on output -> the led on PicoW board will be on, Relay = OFF
+    
+    # This is more to set GPIO on/off for Relay
+    # value = 0, 0V on output -> the breakout board GPIO(x) LED and relay(x) LED will be off, Relay(x) = ON
+    # value = 1, 3.3V on output -> the breakout board GPIO(x) LED and relay(x) LED will be on, Relay(x) = OFF
+    
     is_gpio_set = True
     message = ""
     global mqtt_publish_stats
@@ -131,12 +135,7 @@ def flip_value(value):
         return 0
      if (value == 0):
         return 1
-
                
-# Print memory usage                
-def print_memory_usage():
-    print(f"Memory usage: {get_memory_usage()}")
-
 # Check if the hardware GPIO value are different from in memory GPIO in dictionary
 def is_gpio_values_changed():    
     is_changed = False
@@ -158,14 +157,7 @@ def is_gpio_values_changed():
             print ("GPIO value was changed (momentary switch)")
             
     return is_changed
-           
-          
-# Log message printing it and also send to MQTT broker           
-def log(message):
-    print(message)
-    global mqtt_publish_stats
-    mqtt_publish_stats.log_messages.append(message)  # Save the message until next iteration in the loop to publish. If we call mqtt client here, race condition error
-        
+  
 # Check if GPIO status should be published to MQTT broker   
 def is_publish_gpio_status():
 
@@ -231,24 +223,28 @@ def get_gpio_status(full=False):
         else:
             gpioStatus[name] = mqtt_gpio_hardware[name].status
         
-    return gpioStatus
+    return gpioStatus       
+          
+# Log message printing it and also send to MQTT broker           
+def log(message):
+    print(message)
+    global mqtt_publish_stats
+    mqtt_publish_stats.log_messages.append(message)  # Save the message until next iteration in the loop to publish. If we call mqtt client here, race condition error
+        
 
-
-#def get_temperature():
-#    sensor = machine.ADC(4)
-#    adc_value = sensor.read_u16()
-#    volt = (3.3/65535) * adc_value
-#    temp_celcius = round(27 - (volt - 0.706)/0.001721, 1)
-#    temp_fahrenheit=round(32+(1.8*temp_celcius), 1)
-#    return f"{temp_celcius}C, {temp_fahrenheit}F"
+#  ----------------------------------------------------------------------------          
     
-# Print up time since reboot
+# Get the stats such as uptime and outages
 def get_stats():
     total_uptime = (time.time() - mqtt_publish_stats.startup_time)
     uptime_days, uptime_hours, uptime_minutes, uptime_seconds = calculate_time(total_uptime)
     return (f"Uptime={uptime_days} days {uptime_hours} hrs, Outages={mqtt_publish_stats.outage_counter}, Mem={get_memory_usage()}, Temp={get_temperature()}")
     
-# Print memory usage to check memory leak 
+# Print memory usage                
+def print_memory_usage():
+    print(f"Memory usage: {get_memory_usage()}")
+    
+# Get memory usage to check memory leak 
 def get_memory_usage(full=False):
   gc.collect()
   F = gc.mem_free()
@@ -268,7 +264,7 @@ def calculate_time(seconds):
     seconds %= 60  # Calculate remaining seconds
     return days, hours, minutes, seconds
 
-# Get public ip
+# Get public ip. Note: this is an async call so it won't block
 async def get_public_ip():
     public_ip = None
     try:
@@ -282,6 +278,8 @@ async def get_public_ip():
         public_ip = f"Exception on public IP: {e}"    
     log(public_ip)
 
+#  ----------------------------------------------------------------------------
+
 # Publish Stats class to store all the global stats in mqtt_publish_stats
 class PublishStats:    
     last_published_time = 0
@@ -292,10 +290,11 @@ class PublishStats:
     startup_time = 0
     log_messages = []
     outage_counter = 0
+    is_online = False
     
 # Define the property to used in the master dictonary mqtt_gpio_hardware    
 class GpioProperty:
-    status = 0   # status for all GPIO in 0 or 1  (Note this is the REVERSE of real pin to human readable, e.g. 0 = Off, 1 = On)
+    status = 0   # status for all GPIO in 0 or 1  (Note: This is the INVERSE of real pins for human readable purpose, e.g. 0 = Off, 1 = On)
     pin = None   # Instance of real hardware pin object (Note: Low Voltage 0 = On,  High Voltage 1 = Off)
     last_modified_time = 0  # Last modified time for GPIO (only for relays to use only, hardware burnout protection)
     modified_counter = 0   # Modified counter for GPIO (only for relays to use only, hardware burnout protection)
@@ -337,7 +336,7 @@ async def messages(client):
                         elif (commands[cmd_value] == 2):
                             mqtt_publish_stats.is_republish = True
                         elif (commands[cmd_value] == 3):
-                            asyncio.create_task(get_public_ip())
+                            asyncio.create_task(get_public_ip())  # Note: this is an async call
                     else:
                         # GPIO in Json received e.g. {"GP1": 1}
                         value = json_object[key]
@@ -355,7 +354,7 @@ async def down(client):
     while True:
         await client.down.wait()  # Pause until connectivity changes
         client.down.clear()
-        blue_led(False)
+        mqtt_publish_stats.is_online = False    
         mqtt_publish_stats.outage_counter += 1
         print("WiFi or broker is down.")
 
@@ -363,9 +362,17 @@ async def up(client):
     while True:
         await client.up.wait()
         client.up.clear()
-        blue_led(True)
+        mqtt_publish_stats.is_online = True
         print(f"Connected for ClientID: {mqtt_client_id.decode('utf-8')}")
         await client.subscribe(mqtt_topic, mqtt_qos)
+        
+async def onboard_led_online_status():
+    while True:
+        if (mqtt_publish_stats.is_online == True):
+            set_onboard_led(True)
+        else:
+            toggle_onboard_led()
+        await asyncio.sleep(1)
                
 #  ----------------------------------------------------------------------------      
 
@@ -378,15 +385,13 @@ def startup_connect_wifi():
 
     max_wait = wifi_max_retries
     while max_wait > 0:
-        blue_led(True)   # PicoW has only one LED, this blue_led function is part of "mqtt_as" which supports other hardware such as esp32 
+        toggle_onboard_led()       # Cannot call asnyc function onboard_led_online_status() before "mqtt_as" starts
         if wlan.status() < 0 or wlan.status() >= 3:
             break
         max_wait -= 1     
         print('Device started: Waiting for connection...')
-        blue_led(False)   
         time.sleep(1)        
-
-    blue_led(False)   # Turn off LED for now. It will turn on again when broker is fully connected, handled by async up(client) function 
+    
     if wlan.status() != 3:
         # raise RuntimeError('Wifi connection permanently Failed')        
         print('Wifi connection permanently Failed, machine will reboot...')
@@ -462,7 +467,8 @@ def init():
     mqtt_publish_stats.publish_counter = 0    # If it's -1, it errors out and stops publishing forever
     mqtt_publish_stats.is_republish = False
     mqtt_publish_stats.is_first_time_run = True    # First time init to true
-    mqtt_publish_stats.startup_time = time.time() 
+    mqtt_publish_stats.startup_time = time.time()
+    mqtt_publish_stats.is_online = False   # For onboard LED to use 
             
 
 #  ----------------------------------------------------------------------------      
@@ -478,56 +484,62 @@ def init():
 #    Power off the router or change the SSID name of WiFi
 
 async def main(client):
+
     global mqtt_publish_stats
-    try:
+    
+    # Create a task to show online status on LED
+    asyncio.create_task(onboard_led_online_status())   # Async task for online status
+    
+    try:        
         await client.connect()
     except OSError:
         print('Connection failed.')
         return
+    
     for task in (up, down, messages):
         asyncio.create_task(task(client))
+
 
     while True:
         await asyncio.sleep(5)
 
-        # If WiFi is down the following will pause for the duration.
-        # await client.publish(mqtt_topic, '{} repubs: {} outages: {}'.format(n, client.REPUB_COUNT, mqtt_publish_stats.outage_counter), qos = 1)
-
         # Uncomment this to Delete all RETAIN messages from the MQTT broker (e.g. if you accidentially set the retain flag in "Iot MQTT Panel" app)
         # client.publish(mqtt_topic, '', True)
         
-        # Publish log (not updating publish_counter and last_published_time)
-        # Notes: If logs are published in callback, it will error out in mqtt broker reconnect scenario
+        # Publish log (not updating publish_counter or last_published_time)
+        # Notes: If logs are published in callback, it will error out in mqtt broker reconnect scenario. Do this in here. 
         if (mqtt_publish_stats.log_messages is not None):
             for x in mqtt_publish_stats.log_messages:
                 await client.publish(mqtt_topic, x, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
-                mqtt_publish_stats.log_messages = []
-                
+                mqtt_publish_stats.log_messages = []                
       
         # Publish full list or partial list to Mqtt broker based on business logic 
         is_publish, is_full = is_publish_gpio_status()
-        json_status = None
+        json_status = None    
         
         if (is_publish and is_full):
              json_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
         elif (is_publish and not is_full):
              json_status = json.dumps(get_gpio_status(False))  # Get the list of changed values in JSON
              
+        # json_status contains either full list of GPIO status values or partial list of changed values
+        
         if (is_publish == True):                
             mqtt_publish_stats.publish_counter = mqtt_publish_stats.publish_counter + 1 
             mqtt_publish_stats.last_published_time = time.time()
-            await client.publish(mqtt_topic, json_status, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false              
+            await client.publish(mqtt_topic, json_status, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
+            
 
 #  ----------------------------------------------------------------------------
 
 mqtt_publish_stats = None
 mqtt_gpio_hardware = None
-
 init()
 
-# Note: "mqtt_as" library is based on having good connection when starting up, however it will quit permanently if
-#       Wifi is weak upon initial startup or reboot following a power outage where wifi is unavailable yet
-#       Workaround: Added retry loop before calling "mqtt_as" code 
+# Note: The "mqtt_as" library operates under the assumption of a stable connection during startup. However, it faces
+#       the risk of permanent termination if the WiFi signal is weak during the initial startup or after a reboot following
+#       a power outage where the WiFi is not yet available.
+# Workaround: To mitigate this issue, a retry loop has been implemented before invoking the "mqtt_as" code.
 
 wlan = startup_connect_wifi()   
 if wlan.isconnected():             
@@ -541,11 +553,10 @@ if wlan.isconnected():
         asyncio.run(main(client))
     finally:  # Prevent LmacRxBlk:1 errors.
         print("Shutting down....")
-        print_memory_usage()        
-        blue_led(False)    # PicoW has only one LED, this blue_led function is part of "mqtt_as" which supports other hardware such as esp32 
+        print_memory_usage()
+        set_onboard_led(False)    # PicoW has only one LED 
         client.close()
         asyncio.new_event_loop()
-
 
 
 
