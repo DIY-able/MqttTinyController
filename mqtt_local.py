@@ -17,6 +17,8 @@ if platform == 'esp8266' or platform == 'esp32':
     blue_led = ledfunc(Pin(2, Pin.OUT, value = 1))  # Message received
     # Example of active high LED on UM Feather S3
     # blue_led = ledfunc(Pin(13, Pin.OUT, value = 0), 1)  # Message received ESP32-S3
+    def get_temperature():
+        return "N/A"    
 elif platform == 'pyboard':
     from pyb import LED
     def ledfunc(led, init):
@@ -27,8 +29,11 @@ elif platform == 'pyboard':
         return func
     wifi_led = ledfunc(LED(1), 1)
     blue_led = ledfunc(LED(3), 0)
+    def get_temperature():
+        return "N/A"    
 elif platform == 'rp2':
     from machine import Pin
+    import machine
     def ledfunc(pin):
         pin = pin
         def func(v):
@@ -37,6 +42,20 @@ elif platform == 'rp2':
     wifi_led = lambda _ : None  # Only one LED
     LED = 'LED' if 'Pico W' in implementation._machine else 25
     blue_led = ledfunc(Pin(LED, Pin.OUT, value = 0))  # Message received
+    
+    def get_temperature():
+        try:
+            sensor = machine.ADC(4)
+            adc_value = sensor.read_u16()
+            volt = (3.3/65535) * adc_value
+            temp_celcius = round(27 - (volt - 0.706)/0.001721, 1)
+            temp_fahrenheit=round(32+(1.8*temp_celcius), 1)
+            return f"{temp_celcius}C/{temp_fahrenheit}F"
+        except Exception as e:
+            return "N/A"
 else:  # Assume no LEDs
     wifi_led = lambda _ : None
     blue_led = wifi_led
+    def get_temperature():
+        return "N/A"
+
