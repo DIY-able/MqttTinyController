@@ -138,7 +138,7 @@ If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW ma
 - The code sends the response to MQTT broker, notifying subscribers the device is still up and running with stats
 
 ### Action I: Client sends a message {"CMD":"getip"} to MQTT broker
--        Response: 20.114.152.56
+-        Response: {"IP": "20.114.152.56"}
 - The code seneds the response to MQTT broker, publishing the public IP where your Microcontroller is running
 
 ### Action J: Client sends a message {"CMD":"refresh"} to MQTT broker
