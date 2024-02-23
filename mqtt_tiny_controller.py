@@ -33,6 +33,7 @@ from collections import OrderedDict
 # Feb 19, 2024, v2.0.2 [DIYable] - Included total uptime statistics, outage count and onboard tempeature in the published data. 
 # Feb 20, 2024, v2.0.3 [DIYable] - Added commands "stats", "refresh", "getip" and Implemented flashing LED for powering up and machine.reset for permanent failure.
 # Feb 21, 2024, v2.0.4 [DIYable] - Added async flashing status for onboard LED before fully connected. Removed blue_led() from code and added toggle_onboard_led, set_onboard_led to mqtt_local
+# Feb 23, 2024, v2.0.5 [DIYable] - Response public IP in JSON format with customized key name, this can be useful for Serverless Azure Function or AWS Lambda to update domain using dynamic DNS service
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -173,7 +174,7 @@ def is_publish_gpio_status():
     elif  (((time.time() - mqtt_publish_stats.last_published_time) > publish_threshold_in_seconds) and mqtt_publish_stats.publish_counter >=0):
         mqtt_publish_stats.publish_counter = 0  
            
-    # Publish full list status to Mqtt broker first time running or republish, otherwise only send the changed values
+    # Publish full list status to Mqtt broker first time running or republish (command is called "refresh"), otherwise only send the changed values
     if (mqtt_publish_stats.is_first_time_run == True):   
         mqtt_publish_stats.is_first_time_run = False
         log(f"Subscribed for ClientID: {mqtt_client_id.decode('utf-8')}")
@@ -267,16 +268,24 @@ def calculate_time(seconds):
 # Get public ip. Note: this is an async call so it won't block
 async def get_public_ip():
     public_ip = None
+    error_message = None
     try:
         response = urequests.get(json_ip_provider)
         if response.status_code == 200:
             data = response.json()
-            public_ip = data.get('ip', None)
+            temp_ip = data.get('ip', None)   # Json ip provider look for "ip"
+            public_ip = json.dumps({ip_keyname:temp_ip}) # Customized key name for JSON result  
         else:
-            public_ip = f"Failed to get IP, HTTP code: {response.status_code}"
+            error_message = f"Failed to get IP, HTTP code: {response.status_code}"
     except Exception as e:
-        public_ip = f"Exception on public IP: {e}"    
-    log(public_ip)
+        error_message = f"Exception to get IP: {e}"
+        
+    if (error_message != None):
+        log(error_message)
+        
+    if (public_ip != None):        
+        log(public_ip)
+    
 
 #  ----------------------------------------------------------------------------
 
@@ -327,14 +336,16 @@ async def messages(client):
            
         if (is_message_json == True):
             try:
-                for key in json_object:    # Note: key in a dict is unique, e.g. Bad command {"CMD": "getip", "CMD": "stats", "CMD": "republish"} will execute "republish" only
-                    if (key == command_prefix):                 
+                for key in json_object:    # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)                                        
+                    if (key == ip_keyname):  # Because of call back, ip returns in JSON, we need to ignore {"IP":"111.222.333.444"}
+                        break
+                    elif (key == command_prefix):                 
                         # Command in Json received, e.g {"CMD":"getip"}
                         cmd_value = json_object[key]                        
                         if (commands[cmd_value] == 1):  # Use dict as enum without hardcoding
                             log(f"{get_stats()}")
                         elif (commands[cmd_value] == 2):
-                            mqtt_publish_stats.is_republish = True
+                            mqtt_publish_stats.is_republish = True    # Note: CMD "refresh" = republish in code
                         elif (commands[cmd_value] == 3):
                             asyncio.create_task(get_public_ip())  # Note: this is an async call
                     else:
@@ -509,7 +520,7 @@ async def main(client):
         # Publish log (not updating publish_counter or last_published_time)
         # Notes: If logs are published in callback, it will error out in mqtt broker reconnect scenario. Do this in here. 
         if (mqtt_publish_stats.log_messages is not None):
-            for x in mqtt_publish_stats.log_messages:
+            for x in mqtt_publish_stats.log_messages:                
                 await client.publish(mqtt_topic, x, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
                 mqtt_publish_stats.log_messages = []                
       
