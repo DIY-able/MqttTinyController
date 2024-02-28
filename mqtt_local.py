@@ -22,7 +22,7 @@ if platform == 'esp8266' or platform == 'esp32':
     
     # ---------------------------------------------------
     
-    def get_temperature():
+    def get_formatted_temperature():
         return "N/A"
     
     def toggle_onboard_led():
@@ -47,7 +47,7 @@ elif platform == 'pyboard':
     
     # ---------------------------------------------------
     
-    def get_temperature():
+    def get_formatted_temperature():
         return "N/A"
     
     def toggle_onboard_led():
@@ -74,7 +74,7 @@ elif platform == 'rp2':
     
     # ---------------------------------------------------
 
-    def get_temperature():
+    def get_formatted_temperature():
         try:
             sensor = machine.ADC(4)
             adc_value = sensor.read_u16()
@@ -105,7 +105,7 @@ else:  # Assume no LEDs
     
     # ---------------------------------------------------
     
-    def get_temperature():
+    def get_formatted_temperature():
         return "N/A"
 
     def toggle_onboard_led():
