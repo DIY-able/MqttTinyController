@@ -27,6 +27,9 @@ Github: https://github.com/peterhinch/micropython-mqtt
 - Retrieve statistics such as total uptime and outage occurrences.
 - Obtain temperature readings using the onboard sensor of the Pico.
 - Retrieve the public IP address of your router.
+- Sync clock with NTP server for stats and MFA.
+- Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
+- Configurable GPIO for notification in JSON format.
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
@@ -97,7 +100,11 @@ If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW ma
    
        gpio_pins_for_relay_switch = {16, 17}            List of GPIO IDs regular relay switches
        gpio_pins_for_momentary_relay_switch = {18, 19}  List of GPIO IDs relay switches and configure them as momentary switches
-       gpio_pins_for_contact_switch = {0, 1, 2, 3}      List of GPIO IDs for Normally Open (NO) contact switches e.g. magnetic contact 
+       gpio_pins_for_contact_switch = {0, 1, 2, 3}      List of GPIO IDs for Normally Open (NO) contact switches e.g. magnetic contact
+
+       gpio_pins_for_notification = {0, 1, 16, 17}      List of GPIO IDs opt for notification when value is changed
+       gpio_pins_for_totp_enabled = {16: ["ONSWG4TFOQQHI33UOAQGG3DJMVXHIIBR", "MNWGSZLOOQQDEIDTMVRXEZLU"]}     Base32 Encoded TOTP key for MFA
+   
 7. Run main.py in Thonny for debugging or exit Thonny then plug PicoW in any USB outlet for auto start
 
 # Usage by Example
@@ -136,7 +143,7 @@ If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW ma
 - The code sends the response to MQTT broker, all subscribers have the FULL list status
 
 ### Action G: Client sends a message {"CMD":"stats"} to MQTT broker
--        Response: Uptime=1 days 5 hrs, Outages=0, Mem=32.9%, Temp=18.6C/65.5F
+-        Response: Uptime=1 days 5 hrs, Outages=0, Mem=32.9%, Temp=18.6C/65.5F, Rtc=2024-02-01 18:40
 - The code sends the response to MQTT broker, notifying subscribers the device is still up and running with stats
 
 ### Action I: Client sends a message {"CMD":"getip"} to MQTT broker
@@ -146,6 +153,15 @@ If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW ma
 ### Action J: Client sends a message {"CMD":"refresh"} to MQTT broker
 -        Response: {"GP0": 1, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
 - The code sends the response to MQTT broker, all subscribers have the FULL list status, in this example GP0=1 and GP1=1
+
+### Action K: Client sends {"GP16": 1} to MQTT broker with MFA TOTP key enabled in config for GP16
+-        Response: Error: MFA validation failed, GPIO cannot be set
+
+### Action L: Client sends MFA message {"MFA": 123456} to MQTT broker, then send {"GP16": 1} ref to previous Action
+-        Response: {"MFA": 123456}
+-        Response: {"GP16": 1}
+- PicoW Hardware: GP16 relay is set to ON
+- The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 
 # Mobile App "IoT MQTT Panel" Setup by Example
 
@@ -178,3 +194,9 @@ If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW ma
        Name: Refresh All GPIO
        Payload: {"CMD":"refresh"}
        Qos sets to 0
+### Text Log:
+       Name: Log
+       Enabled Notification: checked (Pro version)
+       Matches with RegEx: .NOTIFY
+       Notification message: <payload>
+       QoS sets to 1
