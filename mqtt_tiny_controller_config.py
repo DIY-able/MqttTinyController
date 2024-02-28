@@ -46,7 +46,7 @@ ip_keyname = "IP"   # Response in JSON, {"IP":"111.222.333.444"}
 
 # Notification in log
 notification_keyname = "NOTIFY"   # Response in JSON, e.g. {"NOTIFY": {"GP16": 1, "GP17": 0}}
-notification_gpio_pins = {0, 1, 16, 17}   # Only send notification when GPIO values are changed
+gpio_pins_for_notification = {0, 1, 16, 17}   # Only send notification when GPIO values are changed
 
 # NTP clock sync for RTC (Real time clock)
 scheduled_clock_sync_in_seconds = 86400  # sync everyday (86400 sec), -1 disable clock sync. Need to enable sync if MFA (TOTP) is used
