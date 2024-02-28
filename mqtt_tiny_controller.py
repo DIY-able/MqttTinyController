@@ -282,7 +282,7 @@ def send_notification(is_gpio_changed):
         # Only send notificaiton for the pins configured to be sent
         for gpio_name in changed_gpio_status:
             pin_id = get_gp_name_to_pin(gpio_name)  # Get the name to pin id (e.g. from "GP2" to 2)
-            if (pin_id in notification_gpio_pins):  # Check the list in config (only send if it matches in config list)
+            if (pin_id in gpio_pins_for_notification):  # Check the list in config (only send if it matches in config list)
                 is_notify = True
                 temp_gpio[gpio_name] = changed_gpio_status[gpio_name] # copy the value 
                 
