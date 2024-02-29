@@ -6,10 +6,14 @@ Many of the MQTT PicoW codes, samples, and tutorials available on the Internet l
 
 It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, such as network interruption or SSID issues. In additional, in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling, MqttTinyController protects the hackers from starting a fire in your home remotely.
 
-# Thanks to Peter Hinch on "mqtt_as.py" library
-Big thanks to the amazing "mqtt_as" library written by Peter Hinch from UK. Forget about umqtt.simple and umqtt.robust, mqtt_as is totally on another level. Together with uasyncio library, it solves every problem I had.
+# Acknowledgement
+Big thanks to the amazing "mqtt_as" library written by Peter Hinch from UK. Let's forget about umqtt.simple and umqtt.robust, because mqtt_as is totally on another level. Together with uasyncio library, it solves every problem I had.
 
-Mqtt_as Github: https://github.com/peterhinch/micropython-mqtt 
+Github: https://github.com/peterhinch/micropython-mqtt 
+
+Also, thanks to Edd Mann (also from UK) for MFA TOTP library:
+
+Github: https://github.com/eddmann/pico-2fa-totp
 
 # MqttTinyController Features
 - Support relay switches (e.g. appliance control) and contact switches (e.g. magnetic contact)
@@ -219,7 +223,9 @@ One GPIO pin takes multiple keys. For instance, GP16 controls my LED light, whil
 When you power up the PicoW without Wi-Fi or without a stable connection, the 'mqtt_as' module quits and shuts down. This behavior, as explained by Peter Hinch, is intentional. However, in cases of a power outage where both the Wi-Fi router and PicoW lose power simultaneously, upon restoration of power, the PicoW might start up before the Wi-Fi network is fully available, resulting in it being unable to function properly. To address this issue, a workaround is to implement a retry loop to attempt to connect to Wi-Fi a specified number of times (determined by the 'wifi_max_wait' parameter in the configuration) before initializing the 'mqtt_as' module.
 
 # WPA3 issue and Flipper Zero attack
-If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW may experience connectivity issues if your device is not close to the router. Switching the settings back to "WPA2 only" resolves this issue.  When PicoW is running on WPA2, I have tested with de-auth attack using Flipper Zero and Marauder, PicoW instantly got disconnected. However, when the de-auth attack is done, MqttTinyController automatically reconnected to WIFI and MQTT broker. Indeed, PicoW wireless chip supports WPA3 but not sure if the driver supports that yet. If that's the case, you can technically run PicoW with WPA3 with Management Frame Protection (MFP) enabled on your router to prevent de-auth attack. But at this point, I am running it on WPA2 for stability. 
+If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW may experience connectivity issues if your device is not close to the router. Switching the settings back to "WPA2 only" resolves this issue, please keep this in mind.
+
+When PicoW is running on WPA2, I have tested with de-auth attack using Flipper Zero and Marauder, PicoW instantly got disconnected. However, when the de-auth attack was done, MqttTinyController automatically reconnected back to WIFI and MQTT broker. Indeed, PicoW wireless chip supports WPA3 but not sure if the driver supports that yet. If that's the case, you can technically run PicoW with WPA3 with Management Frame Protection (MFP) enabled on your router to prevent de-auth attack. But at this point, I am running it on WPA2 for stability.
 
 # Important notes on QoS1 with Clear Session
 In MQTT specification, there is "Clear Session" option, the code uses Quality of Service (QoS) level 1 with clear session disabled. All your messages have use QoS1 to send, with client "Clear Session" set to FALSE when subscribe to the MQTT broker. For mobile phone app "IoT MQTT Panel", you need to uncheck the "Clear Session" option in "Additional options". 
