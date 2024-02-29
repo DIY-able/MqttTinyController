@@ -192,7 +192,7 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
        QoS sets to 1       
 
 # Can relay on/off be scheduled?
-From a technical standpoint, it's feasible to integrate the scheduling code into the microcontroller. However, I believe that scheduling shouldn't be its primary function. The microcontroller's main responsibility should revolve around hardware control and reporting hardware status through MQTT. For scheduling tasks, it should be triggered by the mobile app or other clients. One approach is to develop an Azure Function using MQTT NET or utilize Amazon AWS Lambda. This is a sample project I am running it on Azure which supports MFA (TOTP), it uses TimerTrigger with CRON expression:
+From a technical standpoint, it's possible to integrate the scheduling code into the microcontroller. However, I believe that scheduling shouldn't be its primary function. The microcontroller's main responsibility should revolve around hardware control and reporting hardware status through MQTT. For scheduling tasks, it should be triggered by the mobile app or other clients. One approach is to develop an Azure Function using MQTT NET or utilize Amazon AWS Lambda. This is a sample project I am running it on Azure which supports MFA (TOTP), it uses TimerTrigger with CRON expression:
 
 https://github.com/DIY-able/MqttTimerFunction
 
@@ -211,16 +211,15 @@ One GPIO pin takes multiple keys. For instance, GP16 controls my LED light, whil
        totp_keyname = "MFA"                # Request command "MFA" is easier to type than "TOTP", e.g. {"MFA": 123456}
        totp_max_expired_codes = 5          #  Allow x number of expired code due to different clocks between devices
        
-       gpio_pins_for_totp_enabled = {16: ["Secret_Key_A", "Secret_Key_B"],   # Notes: Keys has to be encoded with Base32
+       gpio_pins_for_totp_enabled = {16: ["Secret_Key_A", "Secret_Key_B"],   # Notes: Keys have to be encoded in Base32
                                      18: ["Secret_Key_A"]
 
 
 # Starting up with weak WIFI or power outage reboot
 When you power up the PicoW without Wi-Fi or without a stable connection, the 'mqtt_as' module quits and shuts down. This behavior, as explained by Peter Hinch, is intentional. However, in cases of a power outage where both the Wi-Fi router and PicoW lose power simultaneously, upon restoration of power, the PicoW might start up before the Wi-Fi network is fully available, resulting in it being unable to function properly. To address this issue, a workaround is to implement a retry loop to attempt to connect to Wi-Fi a specified number of times (determined by the 'wifi_max_wait' parameter in the configuration) before initializing the 'mqtt_as' module.
 
-# WPA3 issue
-If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW may experience connectivity issues. Switching the settings back to "WPA2 only" resolves this issue.
-
+# WPA3 issue and Flipper Zero attack
+If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW may experience connectivity issues if your device is not close to the router. Switching the settings back to "WPA2 only" resolves this issue.  When PicoW is running on WPA2, I have tested with de-auth attack using Flipper Zero and Marauder, PicoW instantly got disconnected. However, when the de-auth attack is done, MqttTinyController automatically reconnected to WIFI and MQTT broker. Indeed, PicoW wireless chip supports WPA3 but not sure if the driver supports that yet. If that's the case, you can technically run PicoW with WPA3 with Management Frame Protection (MFP) enabled on your router to prevent de-auth attack. But at this point, I am running it on WPA2 for stability. 
 
 # Important notes on QoS1 with Clear Session
 In MQTT specification, there is "Clear Session" option, the code uses Quality of Service (QoS) level 1 with clear session disabled. All your messages have use QoS1 to send, with client "Clear Session" set to FALSE when subscribe to the MQTT broker. For mobile phone app "IoT MQTT Panel", you need to uncheck the "Clear Session" option in "Additional options". 
