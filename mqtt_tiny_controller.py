@@ -36,7 +36,8 @@ from mqtt_local import *
 # Feb 23, 2024, v2.0.5 [DIYable] - Response public IP in JSON format with customized key name, this can be useful for Serverless Azure Function or AWS Lambda to update domain using dynamic DNS service
 # Feb 25, 2024, v2.0.6 [DIYable] - Sync internal clock with NTP server, refactored time to utime. Added notification JSON as part of the log {"NOTIFY": {"GP16": 1, "GP17": 0}}
 # Feb 26, 2024, v2.1.0 [DIYable] - Added Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
-# Feb 28, 2024, v2.1.1 [DIYable] - Bug fix on notification and send back changed values to the broker regardless. Refactored the code. 
+# Feb 28, 2024, v2.1.1 [DIYable] - Bug fix on notification and send back changed values to the broker regardless. Refactored the code.
+# Mar 04, 2024, v2.2.0 [DIYable] - Publish last publish time stamp to MQTT as log, each time microcontroller publishes GPIO values
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -585,11 +586,15 @@ async def worker(client):
                 json_gpio_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
             else:
                 json_gpio_status = json.dumps(get_gpio_status(False)) # Get the list of changed values in JSON
-                reset_gpio_changed_status()  # Reset is_changed to False
-                
+                reset_gpio_changed_status()  # Reset is_changed to False            
+
             mqtt_publish_stats.publish_counter = mqtt_publish_stats.publish_counter + 1 
             mqtt_publish_stats.last_published_time = utime.time()
+            log(f"Last GPIO Published={get_formatted_utc_time_now()}") # Log the last published time stamp and send to broker (purely for logging purpose)
+            
             await client.publish(mqtt_topic, json_gpio_status, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
+            
+            
             
 
 #  ----------------------------------------------------------------------------

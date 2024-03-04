@@ -46,7 +46,7 @@ def sync_clock():
 # Get formatted UTC time
 def get_formatted_utc_time_now():
     t = utime.gmtime()
-    formatted_time = '{:04d}-{:02d}-{:02d} {:02d}:{:02d}'.format(t[0], t[1], t[2], t[3], t[4])
+    formatted_time = '{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(t[0], t[1], t[2], t[3], t[4], t[5])
     return(formatted_time)
     
 # Get memory usage to check memory leak 
