@@ -38,7 +38,8 @@ Github: https://github.com/eddmann/pico-2fa-totp
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
-- 4Channel Relay Module (e.g. Sainsmart ‎101-70-101 from Amazon)
+- 4Channel Relay Module (e.g. Sainsmart ‎101-70-101 from Amazon) or
+  8Channel Relay Module (e.g. SainSmart 101-70-102 from Amazon)
 - Pico Breakout Board (e.g. Freenove FNK0081 from Amazon)
 
 # Does the code work on ESP32, ESP8266, Pyboard?
@@ -218,6 +219,17 @@ One GPIO pin takes multiple keys. For instance, GP16 controls my LED light, whil
        gpio_pins_for_totp_enabled = {16: ["Secret_Key_A", "Secret_Key_B"],   # Notes: Keys have to be encoded in Base32
                                      18: ["Secret_Key_A"]
 
+# Known MFA security issue
+Because MqttTinyController does NOT validate client ID associated with TOTP secret keys and/or the MQTT message payload action is not associated with the TOTP, so it is possible Client 1 sends the MFA for GP18 (higher privileges) and within 30 seconds x 5 (expired passcode) = 2.5 min, Client 2 can turn on the relay by just sending {"GP18", 1} without sending MFA TOTP. By design, the TOTP value is stored in a global variable on the microcontroller, it can be considered as a security risk within that 2.5 min. The reason it was implemented this way was because the "IoT MQTT Panel" mobile app cannot inject TOTP dynamcially as part of the Payload in the MQTT message, it would NOT be usable if you need to modify the payload for the switch everytime on the app. In the ideal world, the MQTT message should look like this:
+
+       {"GPIO": {"GP16": 1, "GP17": 0}, "MFA": 123456} 
+       
+Or another way is to send the MFA with client ID:
+
+       {"ClientID": "MobileApp1", "MFA": 123456"} before the GPIO action 
+       {"ClientID": "MobileApp1", "GPIO": {"GP16": 1, "GP17": 0}}
+       
+But then, this has the assumption 3rd party doesn't know your Client ID. If someone get a hold of your MQTT broker account, they can see your Client ID regardless, so this doesn't completely solve the problem. To get a balance between convenience and security and due to limitation of "IoT MQTT Panel" mobile app, we would leave it as it is now. The security risk is medium to low. 
 
 # Starting up with weak WIFI or power outage reboot
 When you power up the PicoW without Wi-Fi or without a stable connection, the 'mqtt_as' module quits and shuts down. This behavior, as explained by Peter Hinch, is intentional. However, in cases of a power outage where both the Wi-Fi router and PicoW lose power simultaneously, upon restoration of power, the PicoW might start up before the Wi-Fi network is fully available, resulting in it being unable to function properly. To address this issue, a workaround is to implement a retry loop to attempt to connect to Wi-Fi a specified number of times (determined by the 'wifi_max_wait' parameter in the configuration) before initializing the 'mqtt_as' module.
@@ -225,7 +237,7 @@ When you power up the PicoW without Wi-Fi or without a stable connection, the 'm
 # WPA3 issue and Flipper Zero attack
 If you have enabled the "WPA2/WPA3" transition settings on your router, PicoW may experience connectivity issues if your device is not close to the router. Switching the settings back to "WPA2 only" resolves this issue, please keep this in mind.
 
-When PicoW is running on WPA2, I have tested with de-auth attack using Flipper Zero and Marauder, PicoW instantly got disconnected. However, when the de-auth attack was done, MqttTinyController automatically reconnected back to WIFI and MQTT broker. Indeed, PicoW wireless chip supports WPA3 but not sure if the driver supports that yet. If that's the case, you can technically run PicoW with WPA3 with Management Frame Protection (MFP) enabled on your router to prevent de-auth attack. But at this point, I am running it on WPA2 for stability.
+When PicoW was running on WPA2, I tested with de-auth attack using Flipper Zero and Marauder, PicoW instantly got disconnected. When the de-auth attack was done, MqttTinyController automatically reconnected back to WIFI and MQTT broker flawlessly. Although PicoW wireless chip claims to support WPA3 but not sure if the driver supports that. If that's the case, you can technically run PicoW with WPA3 with Protected Management Frame (PMF) enabled on your router to prevent de-auth attack. But at this point, I am running it on WPA2 for stability.
 
 # Important notes on QoS1 with Clear Session
 In MQTT specification, there is "Clear Session" option, the code uses Quality of Service (QoS) level 1 with clear session disabled. All your messages have use QoS1 to send, with client "Clear Session" set to FALSE when subscribe to the MQTT broker. For mobile phone app "IoT MQTT Panel", you need to uncheck the "Clear Session" option in "Additional options". 
