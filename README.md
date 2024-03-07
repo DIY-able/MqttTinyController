@@ -38,8 +38,7 @@ Github: https://github.com/eddmann/pico-2fa-totp
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
-- 4Channel Relay Module (e.g. Sainsmart ‎101-70-101 from Amazon) or
-  8Channel Relay Module (e.g. SainSmart 101-70-102 from Amazon)
+- 4 or 8 Channel Relay Module (e.g. Sainsmart ‎101-70-101, 101-70-102 from Amazon)
 - Pico Breakout Board (e.g. Freenove FNK0081 from Amazon)
 
 # Does the code work on ESP32, ESP8266, Pyboard?
