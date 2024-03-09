@@ -34,7 +34,7 @@ Github: https://github.com/eddmann/pico-2fa-totp
 - Retrieve the public IP address of your router.
 - Sync clock with NTP server for stats and MFA.
 - Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
-- Configurable GPIO for notification in JSON format.
+- Configure GPIO to send a JSON "NOTIFY" message when there is a real hardware change. This feature can be utilized by clients for notifications.
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
@@ -201,7 +201,7 @@ From a technical standpoint, it's possible to integrate the scheduling code into
 https://github.com/DIY-able/MqttTimerFunction
 
 # Notification issues on Mobile app
-Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, it could result in FALSE POSITIVE notifications when "value is changed" is detected. To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1"}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
+Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, it could result in FALSE POSITIVE notifications when "value is changed". To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1"}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
 
        notification_keyname = "NOTIFY"                 # Response in JSON, e.g. {"NOTIFY": {"GP16": 1, "GP17": 0}}
        gpio_pins_for_notification = {0, 1, 16, 17}     # Only send notification when GPIO values are changed
@@ -219,11 +219,11 @@ One GPIO pin takes multiple keys. For instance, GP16 controls my LED light, whil
                                      18: ["Secret_Key_A"]
 
 # Known MFA security issue
-Because MqttTinyController does NOT validate client ID associated with TOTP secret keys and GPIO action in payload is not tied to TOTP in a MQTT message, so it is possible Client 1 sends the MFA for GP18 (higher privileges) and within 30 seconds x 5 (expired passcode) = 2.5 min, Client 2 can turn on the relay by just sending {"GP18", 1} without sending MFA TOTP. By design, the TOTP value is stored in a global variable on the microcontroller, it can be considered as a security risk within that 2.5 min. The reason it was implemented this way was because the "IoT MQTT Panel" mobile app cannot inject TOTP dynamcially as part of the Payload in the MQTT message, it would NOT be usable if you need to modify the payload for the switch everytime on the app. In the ideal world, the MQTT message should look like this:
+Because MqttTinyController does NOT validate client ID associated with TOTP secret keys. Also, GPIO action in payload is not tied to TOTP in a MQTT message. Therefore, it is possible for Client 1 to send MFA for GP18 (higher privileges) and within 30 seconds x 5 (expired passcode) = 2.5 min, Client 2 can turn on the relay by just sending {"GP18", 1} without sending MFA TOTP. By design, the TOTP value is stored in a global variable on the microcontroller, it can be considered as a security risk within that 2.5 min. The reason it was implemented this way was because the "IoT MQTT Panel" mobile app cannot inject TOTP dynamcially as part of the Payload in the MQTT message, it would NOT be usable from UI prespective if you need to modify the payload for the switch everytime on the app. If mobile client supports dynamic TOTP, the MQTT message should look like this in the ideal world:
 
        {"GPIO": {"GP16": 1, "GP17": 0}, "MFA": 123456} 
        
-Or another way is to send the MFA with client ID:
+Perhaps, another way is to send MFA with client ID:
 
        {"ClientID": "MobileApp1", "MFA": 123456"} before the GPIO action 
        {"ClientID": "MobileApp1", "GPIO": {"GP16": 1, "GP17": 0}}
