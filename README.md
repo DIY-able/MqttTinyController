@@ -93,7 +93,7 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
 - GP16, GP17 are defined as Relay
 - GP18, GP19 are defined as Momentary Relay
 - GP0, GP1, GP2, GP3 are defined as Contact Switch
-- Client is defined as any client (e.g. MQTT web client, MQTT CLI, mobile app (such as "IoT MQTT Panel")
+- Client is defined as any client, e.g. MQTT web client, MQTT CLI, mobile app (such as "IoT MQTT Panel")
 - MQTT broker is defined as any MQTT broker (e.g. HiveHQ or Mosquitto)
 
 ### Action A: Turn on a relay on GP16 (with MFA disabled)
@@ -148,10 +148,19 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
 ### Action L: Turn on relay on GP16 with MFA (TOTP) enabled on this GPIO (access granted)
 - Client sends a message {"MFA": 123456} to MQTT broker
 - Client sends a message {"GP16": 1} to MQTT broker
--        Response: {"MFA": 123456}
 -        Response: {"GP16": 1}
 - PicoW Hardware: GP16 relay is set to ON
 - The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
+- All messages on MQTT broker: {"MFA": 123456}, {"GP16": 1}, {"GP16": 1}  (first 2 messages were sent by client, last message was sent by Microcontroller)
+
+### Action M: Turn on relay on GP16 with MFA (TOTP) and Notification enabled on this GPIO (access granted)
+- Client sends a message {"MFA": 123456} to MQTT broker
+- Client sends a message {"GP16": 1} to MQTT broker
+-        Response: {"GP16": 1}
+                   {"NOTIFY": {"GP16": 1}}
+- PicoW Hardware: GP16 relay is set to ON
+- The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
+- All messages on MQTT broker: {"MFA": 123456}, {"GP16": 1}, {"GP16": 1}, {"NOTIFY": {"GP16": 1}}
 
 # Mobile App "IoT MQTT Panel" Setup by Example
 
@@ -185,15 +194,24 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
        Payload: {"CMD":"refresh"}
        Qos sets to 0
 ### Text Log:
-       Name: Log
-       Enabled Notification: checked (Pro version)
-       Matches with RegEx: .NOTIFY
-       Notification message: <payload>
+       Name: Log       
        QoS sets to 1
 ### Text Input:
        Name: MFA     
        Payload: {"MFA": <payload>}
        QoS sets to 1       
+### LED Indicator: (For Notification on GP18)
+       Name: NOTIFY GP18
+       Payload On: 1  (or any value, doesn't matter)
+       Payload Off: 0  (or any value, doesn't matter)
+       Enable notification: Checked (Paid Pro version only)
+       Matches with RegEx: selected
+       RegEx: ^(?=.*\bNOTIFY\b)(?=.*\bGP18\b).*
+       Message: Garage Door LEFT notification
+       Payload Json: Unchecked 
+       Note: "IoT MQTT Panel" has limitation on notification, it cannot trigger different message based on different value and
+       it doesn't support JSON path on notification. See "Notification issue on Mobile app" section for details. 
+       This is a workaround by creating an "LED Indicator" for custom message. 
 
 # Can relay on/off be scheduled?
 From a technical standpoint, it's possible to integrate the scheduling code into the microcontroller. However, I believe that scheduling shouldn't be its primary function. The microcontroller's main responsibility should revolve around hardware control and reporting hardware status through MQTT. For scheduling tasks, it should be triggered by the mobile app or other clients. One approach is to develop an Azure Function using MQTT NET or utilize Amazon AWS Lambda. This is a sample project I am running it on Azure which supports MFA (TOTP), it uses TimerTrigger with CRON expression:
@@ -201,13 +219,13 @@ From a technical standpoint, it's possible to integrate the scheduling code into
 https://github.com/DIY-able/MqttTimerFunction
 
 # Notification issues on Mobile app
-Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, it could result in FALSE POSITIVE notifications when "value is changed". To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1"}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
+Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, it could result in FALSE POSITIVE notifications when "value is changed". To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
 
        notification_keyname = "NOTIFY"                 # Response in JSON, e.g. {"NOTIFY": {"GP16": 1, "GP17": 0}}
        gpio_pins_for_notification = {0, 1, 16, 17}     # Only send notification when GPIO values are changed
 
-# Zero trust on MQTT broker or Mobile app
-With high security in mind, we should never trust the free MQTT broker or mobile app. If someone has your MQTT username and password, they can easily open your garage door for example by sending a {"GPx: 1}. To protect this, MqttTinyController introduced Multi-Factor Authentication (MFA) with Time-Based One-Time Passwords (TOTP), you can use a secret key to generate a one time 6 digit code using Google Authenticator. Every time you want to change the relay on the microcontroller, just copy-paste and send the JSON message {"MFA": 123456} prior to the actual {"GPxx": 1} message. You can also configured how many expired codes it takes (see 'totp_max_expired_codes' in config). 
+# Zero trust on MQTT broker, Mobile app or Azure
+With high security in mind, we should never trust the free MQTT broker or mobile app. While HiveMQ clusters (free edition) provide usernames and passwords, the backend is shared. If someone obtains your MQTT username and password, or if HiveMQ is compromised, they can replay the message and easily open your garage door, for example by sending a {"GP18": 1}. To protect this, MqttTinyController introduced Multi-Factor Authentication (MFA) with Time-Based One-Time Passwords (TOTP), you can use a secret key to generate a one time 6 digit code using Google Authenticator. Every time you want to change the relay on the microcontroller, just copy-paste and send the JSON message {"MFA": 123456} prior to the actual {"GPxx": 1} message. You can also configured how many expired codes it takes (see 'totp_max_expired_codes' in config). 
 
 One GPIO pin takes multiple keys. For instance, GP16 controls my LED light, while GP18 operates my garage door. I have set up an Azure Function schedule to manage the switching of relay GP16 (LED light) daily using Secret_Key_B. When I access my mobile app, I utilize the TOTP generated by Secret_Key_A to interact with either GP16 (LED light) or GP18 (Garage door). The crucial point here is that even if someone were to breach my Azure account, obtain my MQTT broker username/password, and acquire Secret_Key_B from the configuration, attempting to open my garage door by sending {"GP18": 1} would result in a Multi-Factor Authentication (MFA) validation failure.
 
@@ -228,7 +246,7 @@ Perhaps, another way is to send MFA with client ID:
        {"ClientID": "MobileApp1", "MFA": 123456"} before the GPIO action 
        {"ClientID": "MobileApp1", "GPIO": {"GP16": 1, "GP17": 0}}
        
-But then, this is under the assumption of 3rd party doesn't know your Client ID. If someone get a hold of your MQTT broker account, they can see your Client ID regardless, so this doesn't completely solve the problem. To get a balance between convenience and security and due to limitation of "IoT MQTT Panel" mobile app, we would leave it as it is now. The security risk is medium-low. 
+But then, the second workaround is under the assumption of 3rd party doesn't know your Client ID. If someone get a hold of your MQTT broker account, they can see your Client ID regardless, so this doesn't completely solve the problem. To get a balance between convenience and security and due to limitation of "IoT MQTT Panel" mobile app, we would leave it as it is now. The security risk is medium-low. 
 
 # Starting up with weak WIFI or power outage reboot
 When you power up the PicoW without Wi-Fi or without a stable connection, the 'mqtt_as' module quits and shuts down. This behavior, as explained by Peter Hinch, is intentional. However, in cases of a power outage where both the Wi-Fi router and PicoW lose power simultaneously, upon restoration of power, the PicoW might start up before the Wi-Fi network is fully available, resulting in it being unable to function properly. To address this issue, a workaround is to implement a retry loop to attempt to connect to Wi-Fi a specified number of times (determined by the 'wifi_max_wait' parameter in the configuration) before initializing the 'mqtt_as' module.
