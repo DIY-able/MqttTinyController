@@ -35,6 +35,7 @@ Github: https://github.com/eddmann/pico-2fa-totp
 - Sync clock with NTP server for stats and MFA.
 - Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
 - Configure GPIO to send a JSON "NOTIFY" message when there is a real hardware change. This feature can be utilized by clients for notifications.
+- Configurable momentary relay wait time, support turning on multiple relays at the same time and each relay can turn off after a different specified waiting period
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
@@ -97,71 +98,106 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
 - MQTT broker is defined as any MQTT broker (e.g. HiveHQ or Mosquitto)
 
 ### Action A: Turn on a relay on GP16 (with MFA disabled)
-- Client sends a JSON message {"GP16":1} to MQTT broker
+- Client sends a JSON message to MQTT broker
+-        Request: {"GP16":1}
 - PicoW Hardware: GP16 relay is set to ON
 -       Response: {"GP16": 1}
-- The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 
 ### Action B: Turn off a relay on GP16 (with MFA disabled)
-- Client sends a JSON message {"GP16":0} to MQTT broker
+- Client sends a JSON message to MQTT broker
+-        Request: {"GP16":0}
 - PicoW Hardware: GP16 relay is set to OFF 
 -       Response: {"GP16": 0}
-- The code sends the response to MQTT broker, all subscribers have the updated message with GP16=0
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=0
 
 ### Action C: Turn on momentary relay on GP18 (with MFA disabled)
-- Client sends a JSON message {"GP18":1} to MQTT broker
+- Client sends a JSON message to MQTT broker
+-        Request: {"GP18":1}
 - PicoW Hardware: Toggle GP18 momentary relay by first setting the relay GPIO18 to ON, after 2 seconds, set GPIO18 relay to OFF
 -       Response: {"GP18": 0}
-- The code sends the response to MQTT broker, all subscribers have the final status with GP18=0
+- PicoW sends the response to MQTT broker, all subscribers have the final status with GP18=0
 
 ### Action D: Contact switch GP1 is connected physically on the hardware GPIO board
 -        Response: {"GP1": 1}
-- The code sends the response to MQTT broker, all subscribers have the updated message with GP1=1
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP1=1
 
 ### Action E: Combined Action A and Action D in sequence very quickly
 -        Response: {"GP1": 1, "GP16": 1}
-- The code sends the response to MQTT broker, all subscribers have the updated message with GP1=1 and GP16=1
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP1=1 and GP16=1
 
 ### Action F: First time running
 -        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
-- The code sends the response to MQTT broker, all subscribers have the FULL list status
+- PicoW sends the response to MQTT broker, all subscribers have the FULL list status
 
 ### Action G: Get the stats from Microcontroller
-- Client sends a message {"CMD":"stats"} to MQTT broker
+- Client sends a message to MQTT broker
+-         Request: {"CMD":"stats"}
 -        Response: Uptime=1 days 5 hrs, Outages=0, Mem=32.9%, Temp=18.6C/65.5F, Rtc=2024-02-01 18:40
-- The code sends the response to MQTT broker, notifying subscribers the device is still up and running with stats
+- PicoW sends the response to MQTT broker, notifying subscribers the device is still up and running with stats
 
 ### Action I: Get the public IP where the Microcontroller is running
-- Client sends a message {"CMD":"getip"} to MQTT broker
+- Client sends a message to MQTT broker
+-         Request: {"CMD":"getip"}
 -        Response: {"IP": "20.114.152.56"}
-- The code seneds the response to MQTT broker, publishing the public IP where your Microcontroller is running
+- PicoW sends the response to MQTT broker, publishing the public IP where your Microcontroller is running
 
 ### Action J: Manually refresh (re-publish) all GPIO values
-- Client sends a message {"CMD":"refresh"} to MQTT broker
+- Client sends a message to MQTT broker
+-         Request: {"CMD":"refresh"}
 -        Response: {"GP0": 1, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0}
-- The code sends the response to MQTT broker, all subscribers have the FULL list status, in this example GP0=1 and GP1=1
+- PicoW sends the response to MQTT broker, all subscribers have the FULL list status, in this example GP0=1 and GP1=1
 
 ### Action K: Turn on relay on GP16 with MFA (TOTP) enabled on this GPIO (access denied)
-- Client sends a message {"GP16": 1} to MQTT broker
+- Client sends a message to MQTT broker
+-         Request: {"GP16": 1}
 -        Response: Error: MFA validation failed, GPIO cannot be set
 
 ### Action L: Turn on relay on GP16 with MFA (TOTP) enabled on this GPIO (access granted)
-- Client sends a message {"MFA": 123456} to MQTT broker
-- Client sends a message {"GP16": 1} to MQTT broker
--        Response: {"GP16": 1}
+- Client sends 2 messages to MQTT broker
+-         Request: {"MFA": 123456}
+                   {"GP16": 1}
 - PicoW Hardware: GP16 relay is set to ON
-- The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
-- All messages on MQTT broker: {"MFA": 123456}, {"GP16": 1}, {"GP16": 1}  (first 2 messages were sent by client, last message was sent by Microcontroller)
+-        Response: {"GP16": 1}
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
+- All messages on MQTT broker: (first 2 messages were sent by client, last message was sent by Microcontroller)
+-         {"MFA": 123456}
+          {"GP16": 1}
+          {"GP16": 1}  
 
 ### Action M: Turn on relay on GP16 with MFA (TOTP) and Notification enabled on this GPIO (access granted)
-- Client sends a message {"MFA": 123456} to MQTT broker
-- Client sends a message {"GP16": 1} to MQTT broker
+- Client sends 2 messages to MQTT broker
+-         Request: {"MFA": 123456}
+                   {"GP16": 1}
+- PicoW Hardware: GP16 relay is set to ON
 -        Response: {"GP16": 1}
                    {"NOTIFY": {"GP16": 1}}
-- PicoW Hardware: GP16 relay is set to ON
-- The code sends the response to MQTT broker, all subscribers have the updated message with GP16=1
-- All messages on MQTT broker: {"MFA": 123456}, {"GP16": 1}, {"GP16": 1}, {"NOTIFY": {"GP16": 1}}
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
+- All messages on MQTT broker:
+-        {"MFA": 123456}
+         {"GP16": 1}
+         {"GP16": 1}
+         {"NOTIFY": {"GP16": 1}}
 
+### Action N: Turn on 2 relays at the same time GP16, GP17 (with MFA disabled)
+- Client sends a message to MQTT broker
+-         Request: {"GP16": 1, "GP17": 1}
+- PicoW Hardware: GP16 and GP17 relay are set to ON at the same time
+- PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1 GP17=1
+-        Response: {"GP16": 1, "GP17": 1}
+
+### Action O: Turn on 2 momentary relays at the same time GP26, GP27 (with MFA disabled)
+- GP26 and GP27 are defined as momentary relays with 10s and 2s wait time respectively
+-        gpio_pins_for_momentary_relay_switch = {26:10, 27:2}
+- Client sends a message to MQTT broker
+-         Request: {"GP26": 1, "GP27": 1}
+- PicoW Hardware: GP16 and GP17 relay are set to ON at the same time
+-        Response: {"GP26": 1, "GP27": 1}
+- PicoW Hardware: After 2 seconds, GP27 relay is set to OFF 
+-        Response: {"GP27": 0}
+- PicoW Hardware: After 10 seconds, GP26 relay is set to OFF 
+-        Response: {"GP26": 0}
+  
 # Mobile App "IoT MQTT Panel" Setup by Example
 
 - GP16, GP17 are defined as Relay
@@ -217,6 +253,8 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
 From a technical standpoint, it's possible to integrate the scheduling code into the microcontroller. However, I believe that scheduling shouldn't be its primary function. The microcontroller's main responsibility should revolve around hardware control and reporting hardware status through MQTT. For scheduling tasks, it should be triggered by the mobile app or other clients. One approach is to develop an Azure Function using MQTT NET or utilize Amazon AWS Lambda. This is a sample project I am running it on Azure which supports MFA (TOTP), it uses TimerTrigger with CRON expression:
 
 https://github.com/DIY-able/MqttTimerFunction
+
+Running Azure Function with such low volume doesn't cost a lot since the basic tier includes 1 million requests. With "Pay as you go" plan, all you need is to pay for Azure Blob Storage. Running a MQTT Timer function like this costs me around $0.02 US a day (or $0.6 US a month). 
 
 # Notification issues on Mobile app
 Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, it could result in FALSE POSITIVE notifications when "value is changed". To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
