@@ -80,12 +80,12 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
 4. Upload all *.py files to ROOT of PicoW (NOTE: main.py is for PicoW autostart when USB is plugged in)
 5. Modify the config values in mqtt_tiny_controller_config.py such as WiFi ssid/password, Mqtt topic/clientid/broker and the following:
    
-       gpio_pins_for_relay_switch = {16, 17}            List of GPIO IDs regular relay switches
-       gpio_pins_for_momentary_relay_switch = {18, 19}  List of GPIO IDs relay switches and configure them as momentary switches
-       gpio_pins_for_contact_switch = {0, 1, 2, 3}      List of GPIO IDs for Normally Open (NO) contact switches e.g. magnetic contact
+       gpio_pins_for_relay_switch = {16, 17}                List of GPIO IDs regular relay switches
+       gpio_pins_for_momentary_relay_switch = {18:2, 19:2}  List of GPIO IDs relay switches and configure them as momentary switches with 2 seconds wait time
+       gpio_pins_for_contact_switch = {0, 1, 2, 3}          List of GPIO IDs for Normally Open (NO) contact switches e.g. magnetic contact
 
-       gpio_pins_for_notification = {0, 1, 16, 17}      List of GPIO IDs opt for notification when value is changed
-       gpio_pins_for_totp_enabled = {}                  Disable MFA (TOTP)
+       gpio_pins_for_notification = {0, 1, 16, 17}          List of GPIO IDs opt for notification when value is changed
+       gpio_pins_for_totp_enabled = {}                      Disable MFA (TOTP)
    
 7. Run main.py in Thonny for debugging or exit Thonny then plug PicoW in any USB outlet for auto start
 
@@ -186,17 +186,17 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1 GP17=1
 -        Response: {"GP16": 1, "GP17": 1}
 
-### Action O: Turn on 2 momentary relays at the same time GP26, GP27 (with MFA disabled)
-- GP26 and GP27 are defined as momentary relays with 10s and 2s wait time respectively
--        gpio_pins_for_momentary_relay_switch = {26:10, 27:2}
+### Action O: Turn on 2 momentary relays at the same time GP18, GP19 (with MFA disabled)
+- GP18 and GP19 are defined as momentary relays with 10s and 2s wait time respectively
+-        gpio_pins_for_momentary_relay_switch = {18:10, 19:2}
 - Client sends a message to MQTT broker
--         Request: {"GP26": 1, "GP27": 1}
-- PicoW Hardware: GP16 and GP17 relay are set to ON at the same time
--        Response: {"GP26": 1, "GP27": 1}
-- PicoW Hardware: After 2 seconds, GP27 relay is set to OFF 
--        Response: {"GP27": 0}
-- PicoW Hardware: After 10 seconds, GP26 relay is set to OFF 
--        Response: {"GP26": 0}
+-         Request: {"GP18": 1, "GP19": 1}
+- PicoW Hardware: GP18 and GP19 relay are set to ON at the same time
+-        Response: {"GP18": 1, "GP19": 1}
+- PicoW Hardware: After 2 seconds, GP19 relay is set to OFF 
+-        Response: {"GP19": 0}
+- PicoW Hardware: After 10 seconds, GP18 relay is set to OFF 
+-        Response: {"GP18": 0}
   
 # Mobile App "IoT MQTT Panel" Setup by Example
 
@@ -236,13 +236,13 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test ca
        Name: MFA     
        Payload: {"MFA": <payload>}
        QoS sets to 1       
-### LED Indicator: (For Notification on GP18)
-       Name: NOTIFY GP18
+### LED Indicator: (For Notification on GP1)
+       Name: NOTIFY GP1
        Payload On: 1  (or any value, doesn't matter)
        Payload Off: 0  (or any value, doesn't matter)
        Enable notification: Checked (Paid Pro version only)
        Matches with RegEx: selected
-       RegEx: ^(?=.*\bNOTIFY\b)(?=.*\bGP18\b).*
+       RegEx: ^(?=.*\bNOTIFY\b)(?=.*\bGP1\b).*
        Message: Garage Door LEFT notification
        Payload Json: Unchecked 
        Note: "IoT MQTT Panel" has limitation on notification, it cannot trigger different message based on different value and
