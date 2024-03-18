@@ -38,6 +38,7 @@ from mqtt_local import *
 # Feb 26, 2024, v2.1.0 [DIYable] - Added Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
 # Feb 28, 2024, v2.1.1 [DIYable] - Bug fix on notification and send back changed values to the broker regardless. Refactored the code.
 # Mar 04, 2024, v2.2.0 [DIYable] - Publish last publish time stamp to MQTT as log, each time microcontroller publishes GPIO values
+# Mar 17, 2024, v2.2.1 [DIYable] - Configurable momentary relay wait for x seconds before switching off, support concurrent non-blocking GPIO value change using async call
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -98,7 +99,7 @@ def flip_value(value):
 
 # Set GPIO value on hardware
 # e.g. method("GP15", 1) 
-def set_gpio_value_on_hardware(name, value):
+async def set_gpio_value_on_hardware(name, value):
     
     # This is more to set GPIO on/off for Relay
     # value = 0, 0V on output -> the breakout board GPIO(x) LED and relay(x) LED will be off, Relay(x) = ON
@@ -157,16 +158,21 @@ def set_gpio_value_on_hardware(name, value):
             
         if (is_gpio_set):
             if (mqtt_gpio_hardware[name].is_modified_allowed):
+                time_called = utime.time()
                 if (mqtt_gpio_hardware[name].is_momentary):
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=0)  # On (0)
-                    utime.sleep(momentary_switch_delay_in_seconds)
-                    Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=1)  # Off (1), Publish this GPIO is needed because PIN returns to the original state
+                    await asyncio.sleep(mqtt_gpio_hardware[name].momentary_wait_in_seconds) # Non-blocking sleep for x seconds                   
+                    Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=1)  # Off (1), Publish this GPIO is needed because PIN returns to the original state                    
                 else: 
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=flip_value(value)) # Regular relay switch
                 mqtt_gpio_hardware[name].is_changed = True  # Any hardware change needs to echo back to borker making sure client has the same value
                     
-                mqtt_gpio_hardware[name].last_modified_time = utime.time()
-                mqtt_gpio_hardware[name].modified_counter = mqtt_gpio_hardware[name].modified_counter + 1          
+                mqtt_gpio_hardware[name].last_modified_time = time_called   # Because of momentary wait, we need to use the time when it was called, not after the delay
+                mqtt_gpio_hardware[name].modified_counter = mqtt_gpio_hardware[name].modified_counter + 1
+        
+        # GPIO hardware status update
+        update_gpio_status_from_hardware(name)
+        
     except KeyError as ke:
          pass
     
@@ -273,7 +279,7 @@ def send_notification(is_gpio_changed):
         #       if the client application supports notifications. However, client applications may reset values to their defaults, potentially resulting in false positive notifications.
         #       In such cases, reliance on the microcontroller's value as the single source is not a bad idea.
 
-        print(f"Notification, GPIO has changed")
+        print(f"Notification is called, GPIO has changed. Only configured GPIO will receive notification.")
         changed_gpio_status = get_gpio_status(False) # True = full list, False = only changed values
         
         # Send notification response for changed values
@@ -367,6 +373,7 @@ class GpioProperty:
     is_momentary = False       # Is hardware PIN is defined as momentary (only for relays, e.g. switch it on, it will turn off automatically)
     is_changed = False         # For both contacts and relays to publish only changed GPIO value (no need to publish full list)
     totp_keys = []  # Each GPIO can have multiple keys allowed to access (e.g. Azure function Mqtt vs Mqtt mobile app)
+    momentary_wait_in_seconds = 0  # For momentary switch (customized wait in x seconds before switching it off)
 
 #  ----------------------------------------------------------------------------                 
 
@@ -410,8 +417,8 @@ async def messages(client):
                         # GPIO in Json received e.g. {"GP1": 1}
                         value = json_object[key]
                         if (get_current_gpio_value(key) != value):
-                            set_gpio_value_on_hardware(key, value)
-                            update_gpio_status_from_hardware(key)                            
+                            asyncio.create_task(set_gpio_value_on_hardware(key, value))
+                         
             except:
                 pass
                         
@@ -491,6 +498,12 @@ def init():
         
         if (x in gpio_pins_for_momentary_relay_switch):
             mqtt_gpio_hardware[name].is_momentary = True
+            mqtt_gpio_hardware[name].momentary_wait_in_seconds = momentary_switch_default_wait_in_seconds   # Default is set to 2 secs
+            try:
+                if (gpio_pins_for_momentary_relay_switch[x] is not None):
+                    mqtt_gpio_hardware[name].momentary_wait_in_seconds = gpio_pins_for_momentary_relay_switch[x]  # Set customized wait (in seconds) for momentary relay
+            except:
+                pass            
         else:
             mqtt_gpio_hardware[name].is_momentary = False
             
@@ -631,6 +644,3 @@ if wlan.isconnected():
         set_onboard_led(False)    # PicoW has only one LED 
         client.close()
         asyncio.new_event_loop()
-
-
-

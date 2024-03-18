@@ -30,12 +30,12 @@ hardware_violation_max = 3  # Hardware PIN will stop changing value if it exceed
 # Publishing to broker with existing status even nothing changes
 scheduled_publish_in_seconds = 7200  # broadcast every 120min, -1 disable scheduled publish
 
-# Momentary Switch (turn relay it momentary switch)
-momentary_switch_delay_in_seconds = 2
+# Momentary Switch closes after x seconds
+momentary_switch_default_wait_in_seconds = 2
 
 # Define the physical GPIO PIN number on the PicoW board
 gpio_pins_for_relay_switch = {16, 17}           # {[GPIO ID]}: List of GPIO IDs regular relay switches
-gpio_pins_for_momentary_relay_switch = {18, 19}  # {[GPIO ID]}: List of GPIO IDs relay switches and make them into momentary relay
+gpio_pins_for_momentary_relay_switch = {18:2, 19:2}  # {[GPIO ID]}: List of GPIO IDs relay switches and make them into momentary relay, {GPIO_ID:WAIT_IN_SECONDS}
 gpio_pins_for_contact_switch = {0, 1, 2, 3}     # {[GPIO ID]}: List of GPIO IDs for Normally Open (NO) contact switches such as magnetic contact
 
 # Additional features 
