@@ -64,12 +64,12 @@ Although I was able to fix that, there were more problems on the test case 3:
 - Case 2: Auto re-connect when Wifi fails (SSID is still available): Disconnect your PicoW using router admin
 - Case 3: Auto re-connect when Wifi totally gone (SSID is NOT available): Power off the router or change the SSID name of WiFi
 
-If you are using QoS1 on Case 3, the socket will hang indefinitely. However, if you are using QoS0, it is working fine but it QoS1 cannot be used which defeats the purpose. The cause is the library uses blocking sockets with no timeout, Qos1 got stuck in wait_msg. It has been well documented in 2016:
+If you are using QoS1 on Case 3, the socket will hang indefinitely. However, if you are using QoS0, it is working fine but QoS1 cannot be used which defeats the purpose. The cause is the library uses blocking sockets with no timeout, Qos1 got stuck in wait_msg. It has been well documented in 2016:
 
 - https://github.com/micropython/micropython-lib/issues/103 (Qos1 sock WiFi is degraded)
 - https://github.com/micropython/micropython/issues/2568 (Mqtt Wifi dropped, timeout)
 
-Solution: Use "mqtt_as" library written by Peter Hinch. It passed all my test cases with QoS1.
+Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test cases with QoS1.
 
 
 
