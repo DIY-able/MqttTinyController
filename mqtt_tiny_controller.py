@@ -39,6 +39,7 @@ from mqtt_local import *
 # Feb 28, 2024, v2.1.1 [DIYable] - Bug fix on notification and send back changed values to the broker regardless. Refactored the code.
 # Mar 04, 2024, v2.2.0 [DIYable] - Publish last publish time stamp to MQTT as log, each time microcontroller publishes GPIO values
 # Mar 17, 2024, v2.2.1 [DIYable] - Configurable momentary relay wait for x seconds before switching off, support concurrent non-blocking GPIO value change using async call
+# Mar 20, 2024, v2.2.2 [DIYable] - Issue with the asynchronous message callback where it confuses responses with requests in async calls. Refactored the code to distinguish between REQUEST and RESPONSE.
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -159,11 +160,11 @@ async def set_gpio_value_on_hardware(name, value):
         if (is_gpio_set):
             if (mqtt_gpio_hardware[name].is_modified_allowed):
                 time_called = utime.time()
-                if (mqtt_gpio_hardware[name].is_momentary):
+                if (mqtt_gpio_hardware[name].is_momentary):                    
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=0)  # On (0)
                     await asyncio.sleep(mqtt_gpio_hardware[name].momentary_wait_in_seconds) # Non-blocking sleep for x seconds                   
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=1)  # Off (1), Publish this GPIO is needed because PIN returns to the original state                    
-                else: 
+                else:
                     Pin(get_gp_name_to_pin(name), mode=Pin.OUT, value=flip_value(value)) # Regular relay switch
                 mqtt_gpio_hardware[name].is_changed = True  # Any hardware change needs to echo back to borker making sure client has the same value
                     
@@ -189,7 +190,7 @@ def is_gpio_values_changed():
             update_gpio_status_from_hardware(name)
             mqtt_gpio_hardware[name].is_changed = True
             is_changed = True
-            print ("GPIO hardware value is changed")
+            print ("GPIO hardware value has changed")
         elif (mqtt_gpio_hardware[name].is_changed):   # THis is for PIN.OUT such as relay (the is_changed flag already set)
             is_changed = True
             print ("GPIO value was changed (momentary switch)")
@@ -399,13 +400,14 @@ async def messages(client):
            
         if (is_message_json):
             try:
-                for key in json_object:    # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)                                        
-                    if (key == ip_keyname):  # Because of call back, ip returns in JSON, we need to ignore {"IP":"111.222.333.444"}
-                        break
-                    elif (key == totp_keyname):
+                for key in json_object:    
+                    if ((key == ip_keyname) or (key == notification_keyname) or (key == response_time_keyname) or (key == response_keyname)):  
+                        break  # Because of call back, ip returns in JSON, we need to ignore {"IP":"111.222.333.444"} or {"NOTIFY": {"GP16": 1, "GP17": 0}}
+                    elif (key == totp_keyname): # TOTP MFA
                         mqtt_publish_stats.totp_number = int(json_object[key])  # 6 digit integer (not string)
-                    elif (key == command_keyname):                 
+                    elif (key == command_keyname):   
                         # Command in Json received, e.g {"CMD":"getip"}
+                        # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)            
                         cmd_value = json_object[key]                        
                         if (commands[cmd_value] == 501):  # Use dict as enum without hardcoding
                             log(f"{get_stats()}")
@@ -413,11 +415,13 @@ async def messages(client):
                             mqtt_publish_stats.is_republish = True    # Note: CMD "refresh" = republish in code
                         elif (commands[cmd_value] == 503):
                             asyncio.create_task(get_public_ip())  # Note: this is an async call
-                    else:
-                        # GPIO in Json received e.g. {"GP1": 1}
-                        value = json_object[key]
-                        if (get_current_gpio_value(key) != value):
-                            asyncio.create_task(set_gpio_value_on_hardware(key, value))
+                    elif (key == request_keyname):   # {"REQUEST":{"GP26": 1, "GP27": 1}}
+                        gp_list = json_object[key]                        
+                        for gp_key in gp_list:
+                            value = gp_list[gp_key]
+                            if (get_current_gpio_value(gp_key) != value):
+                                print(f"Async set value on hardware key={gp_key}, value={value}")
+                                asyncio.create_task(set_gpio_value_on_hardware(gp_key, value))
                          
             except:
                 pass
@@ -595,15 +599,23 @@ async def worker(client):
         if (is_publish):
             json_gpio_status = None  # this json contains either full list of GPIO status values or partial list of changed values  
             
+            response_dict = dict()
+            
             if (is_full):
-                json_gpio_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
+                response_dict[response_keyname]=get_gpio_status(True)
+                response_dict[response_time_keyname]=get_formatted_utc_time_now()                
+                json_gpio_status = json.dumps(response_dict)
+                #json_gpio_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
             else:
-                json_gpio_status = json.dumps(get_gpio_status(False)) # Get the list of changed values in JSON
+                response_dict[response_keyname]=get_gpio_status(False)
+                response_dict[response_time_keyname]=get_formatted_utc_time_now()
+                json_gpio_status = json.dumps(response_dict)
+                #json_gpio_status = json.dumps(get_gpio_status(False)) # Get the list of changed values in JSON
                 reset_gpio_changed_status()  # Reset is_changed to False            
 
             mqtt_publish_stats.publish_counter = mqtt_publish_stats.publish_counter + 1 
             mqtt_publish_stats.last_published_time = utime.time()
-            log(f"Last GPIO Published={get_formatted_utc_time_now()}") # Log the last published time stamp and send to broker (purely for logging purpose)
+            # log(f"Last GPIO Published={get_formatted_utc_time_now()}") # Log the last published time stamp and send to broker (purely for logging purpose)
             
             await client.publish(mqtt_topic, json_gpio_status, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
             
