@@ -44,7 +44,12 @@ commands = {"stats":501, "refresh":502, "getip":503}  # Use dict as enum without
 json_ip_provider = "https://jsonip.com" # Returns device public IP address in JSON format
 ip_keyname = "IP"   # Response in JSON, {"IP":"111.222.333.444"}
 
-# Notification in log
+# Request and Response keyname
+request_keyname = "REQUEST"     # Request in JSON, e.g. {"REQUEST": {"GP16": 1, "GP17": 0}}
+response_keyname = "RESPONSE"   # Response in JSON, e.g. {"RESPONSE": {"GP16": 1, "GP17": 0}}
+response_time_keyname = "UTC"   # e.g. {"RESPONSE": {"GP26": 1, "GP27": 1}, "UTC": "2030-01-15 00:37:39"}
+
+# Notification
 notification_keyname = "NOTIFY"   # Response in JSON, e.g. {"NOTIFY": {"GP16": 1, "GP17": 0}}
 gpio_pins_for_notification = {0, 1, 16, 17}   # Only send notification when GPIO values are changed
 
