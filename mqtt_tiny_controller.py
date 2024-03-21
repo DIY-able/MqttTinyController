@@ -40,6 +40,7 @@ from mqtt_local import *
 # Mar 04, 2024, v2.2.0 [DIYable] - Publish last publish time stamp to MQTT as log, each time microcontroller publishes GPIO values
 # Mar 17, 2024, v2.2.1 [DIYable] - Configurable momentary relay wait for x seconds before switching off, support concurrent non-blocking GPIO value change using async call
 # Mar 20, 2024, v2.2.2 [DIYable] - Issue with the asynchronous message callback where it confuses responses with requests in async calls. Refactored the code to distinguish between REQUEST and RESPONSE.
+# Mar 21, 2024, v2.2.3 [DIYable] - Remove request/response in JSON and use "UTC" in JSON message to identify if it's a response during call back. It's because mobile app "IoT MQTT Panel", publish message in a switch has to be in same pattern as JSON subscribe.
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -242,7 +243,7 @@ def get_gpio_status(full=False):
     gpio_status = OrderedDict()
     
     # Get the list in sorted order because of leading 0 integer won't work in string sorted (i.e. GP1, GP16, GP2) 
-    merged_list = merged_list = get_gpio_merged_list()
+    merged_list = get_gpio_merged_list()
 
     # Get the list of integer (ToDo: refactor needed - maybe there is a better way to do this in Python)
     temp_list = []
@@ -400,28 +401,38 @@ async def messages(client):
            
         if (is_message_json):
             try:
-                for key in json_object:    
-                    if ((key == ip_keyname) or (key == notification_keyname) or (key == response_time_keyname) or (key == response_keyname)):  
-                        break  # Because of call back, ip returns in JSON, we need to ignore {"IP":"111.222.333.444"} or {"NOTIFY": {"GP16": 1, "GP17": 0}}
-                    elif (key == totp_keyname): # TOTP MFA
-                        mqtt_publish_stats.totp_number = int(json_object[key])  # 6 digit integer (not string)
-                    elif (key == command_keyname):   
-                        # Command in Json received, e.g {"CMD":"getip"}
-                        # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)            
-                        cmd_value = json_object[key]                        
-                        if (commands[cmd_value] == 501):  # Use dict as enum without hardcoding
-                            log(f"{get_stats()}")
-                        elif (commands[cmd_value] == 502):
-                            mqtt_publish_stats.is_republish = True    # Note: CMD "refresh" = republish in code
-                        elif (commands[cmd_value] == 503):
-                            asyncio.create_task(get_public_ip())  # Note: this is an async call
-                    elif (key == request_keyname):   # {"REQUEST":{"GP26": 1, "GP27": 1}}
-                        gp_list = json_object[key]                        
-                        for gp_key in gp_list:
-                            value = gp_list[gp_key]
-                            if (get_current_gpio_value(gp_key) != value):
-                                print(f"Async set value on hardware key={gp_key}, value={value}")
-                                asyncio.create_task(set_gpio_value_on_hardware(gp_key, value))
+                is_message_response = False   # Is Message a Request (sent from client) or a Response (sent from microcontroller), using UTC as identifier
+                
+                 # Because of call back, we need to ignore {"IP":"111.222.333.444"} or {"NOTIFY": {"GP16": 1, "GP17": 0}} or {"GP21":1, "UTC":"2024-01-01"}
+                for key in json_object:
+                    if ((key == ip_keyname) or (key == notification_keyname) or (key == utc_keyname)):
+                        is_message_response = True
+                        print("JSON is a response, ignore in callback")
+                        break
+                
+                if(is_message_response == False):                    
+                    # Json objects are not in order, need seperated loop to set MFA if it's part of GPIO message, e.g. {"GP16":1, "MFA":123456}
+                    for key in json_object:
+                        if (key == totp_keyname):
+                            mqtt_publish_stats.totp_number = int(json_object[key])  # 6 digit integer (not string)
+                    
+                    for key in json_object:    
+                        if (key == command_keyname):   
+                            # Command in Json received, e.g {"CMD":"getip"}
+                            # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)            
+                            cmd_value = json_object[key]                        
+                            if (commands[cmd_value] == 501):  # Use dict as enum without hardcoding
+                                log(f"{get_stats()}")
+                            elif (commands[cmd_value] == 502):
+                                mqtt_publish_stats.is_republish = True    # Note: CMD "refresh" = republish in code
+                            elif (commands[cmd_value] == 503):
+                                asyncio.create_task(get_public_ip())  # Note: this is an async call
+                        elif ((key != totp_keyname) and key.startswith(gpio_prefix)):
+                            value = json_object[key] # e.g. {"GP16":1, "GP17":0}
+                            if (get_current_gpio_value(key) != value):
+                                print(f"Async set value on hardware key={key}, value={value}")
+                                asyncio.create_task(set_gpio_value_on_hardware(key, value))
+
                          
             except:
                 pass
@@ -598,18 +609,16 @@ async def worker(client):
               
         if (is_publish):
             json_gpio_status = None  # this json contains either full list of GPIO status values or partial list of changed values  
-            
-            response_dict = dict()
-            
+                        
             if (is_full):
-                response_dict[response_keyname]=get_gpio_status(True)
-                response_dict[response_time_keyname]=get_formatted_utc_time_now()                
-                json_gpio_status = json.dumps(response_dict)
+                all_gpio = get_gpio_status(True) # Get the full list in JSON
+                all_gpio[utc_keyname] = get_formatted_utc_time_now()                
+                json_gpio_status = json.dumps(all_gpio)                
                 #json_gpio_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
             else:
-                response_dict[response_keyname]=get_gpio_status(False)
-                response_dict[response_time_keyname]=get_formatted_utc_time_now()
-                json_gpio_status = json.dumps(response_dict)
+                all_gpio = get_gpio_status(False) # Get the list of changed values in JSON
+                all_gpio[utc_keyname] = get_formatted_utc_time_now()                
+                json_gpio_status = json.dumps(all_gpio)
                 #json_gpio_status = json.dumps(get_gpio_status(False)) # Get the list of changed values in JSON
                 reset_gpio_changed_status()  # Reset is_changed to False            
 
