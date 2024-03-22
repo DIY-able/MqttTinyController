@@ -211,6 +211,33 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 - PicoW Hardware: After 10 seconds, GP18 relay is set to OFF 
 -        Response: {"GP18": 0, "UTC": "2047-07-01 0:0:10"}
 
+### Action P: Keep hammering on GP16 repeately in short time frame (with MFA disabled)
+- Client sends a message to MQTT broker
+-         Request: {"GP16": 1)
+                   {"GP16": 1)
+                   {"GP16": 1)
+                   {"GP16": 1)
+                   {"GP16": 1)      
+- PicoW Hardware: GP16 relay are set to ON (becasue 1st request is valid)
+-        Response: Warning: Skipping Gpio GP16 value change for hardware burnout protection, min interval between value change is 2 seconds
+
+### Action Q: Keep changing the value on GP16 within 60 seconds (with MFA disabled)
+- Client sends a message to MQTT broker
+-         Request: {"GP16": 1)
+                   {"GP16": 0)
+                   {"GP16": 1)
+                   {"GP16": 0)
+                   {"GP16": 1)
+                   {"GP16": 0)            
+- PicoW Hardware: GP16 relay are set to ON and OFF (until it reaches the limit)
+-        Response: Warning: Skipping Gpio GP16 value change for hardware burnout protection, number of change exceeded max threshold 5 in 60 seconds
+
+### Action R: Keep repeating Action Q for 3 times (with MFA disabled)
+-        Response: Error: Gpio GP16 value change is permanently disabled (until hardware reset) for protection, number of violation exceeded 3
+
+
+
+Warning: Skipping Gpio {name} value change for hardware burnout protection, number of change exceeded max threshold {hardware_modified_max} in {hardware_modified_threshold_in_seconds} seconds"
 
 # Request/Response JSON is incompatible with Mobile app
 
