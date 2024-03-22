@@ -18,6 +18,7 @@ Github: https://github.com/eddmann/pico-2fa-totp
 # MqttTinyController Features
 - Support relay switches (e.g. appliance control) and contact switches (e.g. magnetic contact)
 - Capability to configure relay switches as momentary switches (e.g. garage doors with press/release functionality on remote control)
+- Configurable momentary relay wait time, i.e. each relay can turn off after x seconds (e.g. turn on water solenoid valve on garden hose and turn off after x seconds. Use case: spray water at wild animal when detected by A.I.)
 - Only one single MQTT Topic is needed for both publishers and subscribers with the use of JSON.
 - Structure MQTT payload in JSON format to facilitate compatibility with mobile app "IoT MQTT Panel" leveraging JSON Path.
 - Automatic WiFi reconnection functionality to seamlessly reconnect in case of disconnection. (Thanks to Peter Hinch on mqtt_as library)
@@ -35,7 +36,7 @@ Github: https://github.com/eddmann/pico-2fa-totp
 - Sync clock with NTP server for stats and MFA.
 - Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
 - Configure GPIO to send a JSON "NOTIFY" message when there is a real hardware change. This feature can be utilized by clients for notifications.
-- Configurable momentary relay wait time, support turning on multiple relays at the same time and each relay can turn off after a different specified waiting period
+
 
 # Hardware
 - Raspberry Pi PicoW Pre-Soldered Header (e.g. Freenove FNK0065C from Amazon)
@@ -96,7 +97,8 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 - GP0, GP1, GP2, GP3 are defined as Contact Switch
 - Client is defined as any client, e.g. MQTT web client, MQTT CLI, mobile app (such as "IoT MQTT Panel")
 - MQTT broker is defined as any MQTT broker (e.g. HiveHQ or Mosquitto)
-
+- Note: DO NOT include the "UTC" timestamp in your REQUEST message. The "UTC" timestamp is added by the microcontroller to indicate it's a RESPONSE.
+  
 ### Action A: Turn on a relay on GP16 (with MFA disabled)
 - Client sends a JSON message to MQTT broker
 -        Request: {"GP16":1}
@@ -212,14 +214,12 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 
 # Request/Response JSON is incompatible with Mobile app
 
-You maybe wondering why are we sending {"GP1": 1, "GP2": 1} for both request and respond? Wouldn't it be better to wrap it like this?
--        {"REQUEST": {"GP1": 1, "GP2": 1}}
--        {"RESPONSE": {"GP1": 0, "GP2": 0}}
-Indeed, this was implemented in v2.2.2. But the mobile app "IoT MQTT Panel" has a bug in JsonPath subscribe on the SWITCH. It doesn't toggle if the subscribe message has a different pattern than publish message. 
-This change was rolled back and introduced the solution of using "UTC" timestamp on the Response message:
+You maybe wondering why are we sending e.g. {"GP1": 1, "GP2: 1} for both request and respond? Why can't we wrap the GPIO status like this?
+-        {"REQUEST": {"GP1": 1, "GP2": 1}}      # Note: This is for discussion only, not valid format
+         {"RESPONSE": {"GP1": 0, "GP2": 0}}     # Note: This is for discussion only, not valid format
+Indeed, this was implemented in v2.2.2. But the mobile app "IoT MQTT Panel" has a bug in JsonPath subscribe on the SWITCH. It doesn't toggle if the subscribe message has a different pattern than publish message.  This change was rolled back and the workaround was to add "UTC" timestamp on the Response message:
 -        {"GP1": 0, "UTC": "2047-07-01 0:0:0"}
-In the microcontroller, if callback sees the "UTC" key in the JSON message, it flags it as a response message and won't trigger any hardware change. This is very important for async calls where you want to set multiple GPIOs at once 
-but individual relay turns off at different time (momentary relay).
+In the microcontroller, if callback sees the "UTC" key in the JSON message, it flags it as a response message and won't trigger any hardware change. This is very important for async calls where you want to set multiple GPIOs at once but individual relay turns off at different time (momentary relay).
   
 # Mobile App "IoT MQTT Panel" Setup by Example
 
@@ -299,16 +299,11 @@ One GPIO pin takes multiple keys. For instance, GP16 controls my LED light, whil
                                      18: ["Secret_Key_A"]
 
 # Known MFA security issue
-Because MqttTinyController does NOT validate client ID associated with TOTP secret keys. Also, GPIO action in payload is not tied to TOTP in a MQTT message. Therefore, it is possible for Client 1 to send MFA for GP18 (higher privileges) and within 30 seconds x 5 (expired passcode) = 2.5 min, Client 2 can turn on the relay by just sending {"GP18", 1} without sending MFA TOTP. By design, the TOTP value is stored in a global variable on the microcontroller, it can be considered as a security risk within that 2.5 min. The reason it was implemented this way was because the "IoT MQTT Panel" mobile app cannot inject TOTP dynamcially as part of the Payload in the MQTT message, it would NOT be usable from UI prespective if you need to modify the payload for the switch everytime on the app. If mobile client supports dynamic TOTP, the MQTT message should look like this in the ideal world:
+Because MqttTinyController does NOT validate client ID associated with TOTP secret keys. Also, GPIO action in payload is not tied to TOTP in a MQTT message. Therefore, it is possible for Client 1 to send MFA for GP18 (higher privileges) and within 30 seconds x 5 (expired passcode) = 2.5 min, Client 2 can turn on the relay by just sending {"GP18", 1} without sending MFA TOTP. In the existing implementation, the TOTP value is stored in a global variable on the microcontroller, it can be considered as a security risk within that 2.5 min. The reason it was implemented this way was because the "IoT MQTT Panel" mobile app cannot inject TOTP dynamcially as part of the Payload in the MQTT message, it would NOT be usable from UI prespective if you need to modify the payload for the switch everytime on the app. If mobile client supports dynamic TOTP, the MQTT message should look like this in the ideal world:
 
-       {"GPIO": {"GP16": 1, "GP17": 0}, "MFA": 123456} 
-       
-Perhaps, another way is to send MFA with client ID:
+       {"GP16": 1, "GP17": 0, "MFA": 123456, "ClientID": "MobileApp1"}     # Note: This is for discussion, not valid format       
 
-       {"ClientID": "MobileApp1", "MFA": 123456"} before the GPIO action 
-       {"ClientID": "MobileApp1", "GPIO": {"GP16": 1, "GP17": 0}}
-       
-But then, the second workaround is under the assumption of 3rd party doesn't know your Client ID. If someone get a hold of your MQTT broker account, they can see your Client ID regardless, so this doesn't completely solve the problem. To get a balance between convenience and security and due to limitation of "IoT MQTT Panel" mobile app, we would leave it as it is now. The security risk is medium-low. 
+Then, microcontroller can validate the MFA value based on the Client's secret key. To get a balance between convenience and security and due to limitation of "IoT MQTT Panel" mobile app, we would leave it as it is now. The security risk is medium-low for home use. 
 
 # Starting up with weak WIFI or power outage reboot
 When you power up the PicoW without Wi-Fi or without a stable connection, the 'mqtt_as' module quits and shuts down. This behavior, as explained by Peter Hinch, is intentional. However, in cases of a power outage where both the Wi-Fi router and PicoW lose power simultaneously, upon restoration of power, the PicoW might start up before the Wi-Fi network is fully available, resulting in it being unable to function properly. To address this issue, a workaround is to implement a retry loop to attempt to connect to Wi-Fi a specified number of times (determined by the 'wifi_max_wait' parameter in the configuration) before initializing the 'mqtt_as' module.
