@@ -40,7 +40,8 @@ from mqtt_local import *
 # Mar 04, 2024, v2.2.0 [DIYable] - Publish last publish time stamp to MQTT as log, each time microcontroller publishes GPIO values
 # Mar 17, 2024, v2.2.1 [DIYable] - Configurable momentary relay wait for x seconds before switching off, support concurrent non-blocking GPIO value change using async call
 # Mar 20, 2024, v2.2.2 [DIYable] - Issue with the asynchronous message callback where it confuses responses with requests in async calls. Refactored the code to distinguish between REQUEST and RESPONSE.
-# Mar 21, 2024, v2.2.3 [DIYable] - Remove request/response in JSON and use "UTC" in JSON message to identify if it's a response during call back. It's because mobile app "IoT MQTT Panel", publish message in a switch has to be in same pattern as JSON subscribe.
+# Mar 21, 2024, v2.2.3 [DIYable] - Removed request/response in JSON and use "UTC" in JSON message to identify if it's a response during call back. It's because mobile app "IoT MQTT Panel", publish message in a switch has to be in same pattern as JSON subscribe.
+# Apr 06, 2024, v2.2.4 [DIYable] - Minor bug fix and cleaned up and made get_stats become async call, log when wifi/broker disconnect/connect
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -265,7 +266,7 @@ def get_gpio_status(full=False):
 # Reset all changed GPIO status
 def reset_gpio_changed_status():
     
-    merged_list = merged_list = get_gpio_merged_list()
+    merged_list = get_gpio_merged_list()
        
     for x in merged_list:
         name = gpio_prefix+str(x)
@@ -312,12 +313,18 @@ def log(message):
 #  ----------------------------------------------------------------------------          
     
 # Get the stats such as uptime and outages
-def get_stats():
-    total_uptime = (utime.time() - mqtt_publish_stats.startup_time)
-    uptime_days, uptime_hours, uptime_minutes, uptime_seconds = calculate_time(total_uptime)
-    return (f"Uptime={uptime_days} days {uptime_hours} hrs, Outages={mqtt_publish_stats.outage_counter}, Mem={get_formatted_memory_usage()}, Temp={get_formatted_temperature()}, Rtc={get_formatted_utc_time_now()}")
- 
+async def get_stats():    
+    error_message = None
+    try:
+        total_uptime = (utime.time() - mqtt_publish_stats.startup_time)
+        uptime_days, uptime_hours, uptime_minutes, uptime_seconds = calculate_time(total_uptime)
+        log(f"Uptime={uptime_days} days {uptime_hours} hrs, Outages={mqtt_publish_stats.outage_counter}, Mem={get_formatted_memory_usage()}, Temp={get_formatted_temperature()}, UTC={get_formatted_utc_time_now()}")        
+    except Exception as e:
+        error_message = f"Exception to get stats: {e}"
 
+    if (error_message != None):
+        log(error_message)
+        
 # Get public ip. Note: this is an async call so it won't block
 async def get_public_ip():
     public_ip = None
@@ -335,17 +342,17 @@ async def get_public_ip():
         log(public_ip)
     
     
-# This sync_clock is non-blocking, it is used for scheduled sync.     
+# This scheduled_sync_clock is non-blocking, it is used for scheduled sync.     
 async def scheduled_sync_clock():
     global mqtt_publish_stats
     try:
         ntptime.settime()
         mqtt_publish_stats.last_clock_synced_time = utime.time()
-        log(f"Synced clock successfully, timestamp={utime.time()}" )
+        log(f"Clock synced, timestamp={utime.time()}" )
     except Exception as e:
         log(f"Error synchronizing clock: {e}")
     finally:
-        log(f"Rtc={get_formatted_utc_time_now()}")
+        log(f"UTC={get_formatted_utc_time_now()}")
     
 
 #  ----------------------------------------------------------------------------
@@ -422,18 +429,16 @@ async def messages(client):
                             # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)            
                             cmd_value = json_object[key]                        
                             if (commands[cmd_value] == 501):  # Use dict as enum without hardcoding
-                                log(f"{get_stats()}")
+                                asyncio.create_task(get_stats())  # Async call to get stats
                             elif (commands[cmd_value] == 502):
-                                mqtt_publish_stats.is_republish = True    # Note: CMD "refresh" = republish in code
+                                mqtt_publish_stats.is_republish = True    # Note: CMD "refresh", set republish next round
                             elif (commands[cmd_value] == 503):
-                                asyncio.create_task(get_public_ip())  # Note: this is an async call
+                                asyncio.create_task(get_public_ip())  # Async call to get Ip address
                         elif ((key != totp_keyname) and key.startswith(gpio_prefix)):
                             value = json_object[key] # e.g. {"GP16":1, "GP17":0}
                             if (get_current_gpio_value(key) != value):
                                 print(f"Async set value on hardware key={key}, value={value}")
-                                asyncio.create_task(set_gpio_value_on_hardware(key, value))
-
-                         
+                                asyncio.create_task(set_gpio_value_on_hardware(key, value))  # Async call to set multiple hardware (e.g. multiple relays) at the same time
             except:
                 pass
                         
@@ -447,6 +452,7 @@ async def down(client):
         client.down.clear()
         mqtt_publish_stats.is_online = False    
         mqtt_publish_stats.outage_counter += 1
+        log(f"WiFi or broker is down, UTC={get_formatted_utc_time_now()}")
         print("WiFi or broker is down.")
 
 async def up(client):
@@ -454,7 +460,8 @@ async def up(client):
         await client.up.wait()
         client.up.clear()
         mqtt_publish_stats.is_online = True
-        print(f"Connected for ClientID: {mqtt_client_id.decode('utf-8')}")
+        log(f"Connected: {mqtt_client_id.decode('utf-8')}, UTC={get_formatted_utc_time_now()}")
+        print(f"Connected: {mqtt_client_id.decode('utf-8')}")
         await client.subscribe(mqtt_topic, mqtt_qos)
         
 async def onboard_led_online_status():
@@ -614,12 +621,10 @@ async def worker(client):
                 all_gpio = get_gpio_status(True) # Get the full list in JSON
                 all_gpio[utc_keyname] = get_formatted_utc_time_now()                
                 json_gpio_status = json.dumps(all_gpio)                
-                #json_gpio_status = json.dumps(get_gpio_status(True))   # Get the full list in JSON
             else:
                 all_gpio = get_gpio_status(False) # Get the list of changed values in JSON
                 all_gpio[utc_keyname] = get_formatted_utc_time_now()                
                 json_gpio_status = json.dumps(all_gpio)
-                #json_gpio_status = json.dumps(get_gpio_status(False)) # Get the list of changed values in JSON
                 reset_gpio_changed_status()  # Reset is_changed to False            
 
             mqtt_publish_stats.publish_counter = mqtt_publish_stats.publish_counter + 1 
@@ -646,7 +651,7 @@ wlan = connect_wifi(toggle_onboard_led)   # pass "toggle_onboard_led" as delegat
 if wlan.isconnected():             
 
     # Use NTP server to sync the internal clock
-    sync_clock()   
+    sync_clock()   # This sync_lock is blocking (not async), it's in the _common lib only use 1 time when starting up
     init()         # If there is any error in clock sync, we use the default RTC start time: Jan 1, 2021 (TOTP will fail though)
 
     # Init config[] for mqtt_as
