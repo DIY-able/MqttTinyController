@@ -42,6 +42,7 @@ from mqtt_local import *
 # Mar 20, 2024, v2.2.2 [DIYable] - Issue with the asynchronous message callback where it confuses responses with requests in async calls. Refactored the code to distinguish between REQUEST and RESPONSE.
 # Mar 21, 2024, v2.2.3 [DIYable] - Removed request/response in JSON and use "UTC" in JSON message to identify if it's a response during call back. It's because mobile app "IoT MQTT Panel", publish message in a switch has to be in same pattern as JSON subscribe.
 # Apr 06, 2024, v2.2.4 [DIYable] - Minor bug fix and cleaned up and made get_stats become async call, log when wifi/broker disconnect/connect
+# May 06, 2024, v2.2.5 [DIYable] - Fixed bug on JSON ordering when request includes MFA in the payload, the order can be wrong. e.g. {"MFA":644133, "GP26": 1, "GP27": 1}. Before fix, GP27 may run first.
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -402,6 +403,9 @@ async def messages(client):
      
         try:
            json_object = json.loads(message)
+           ordered_json_data = {}   # Ordered json by key
+           for key in sorted(json_object.keys()):
+               ordered_json_data[key] = json_object[key]           
            is_message_json = True
         except ValueError as ve:
            is_message_json = False
@@ -411,7 +415,7 @@ async def messages(client):
                 is_message_response = False   # Is Message a Request (sent from client) or a Response (sent from microcontroller), using UTC as identifier
                 
                  # Because of call back, we need to ignore {"IP":"111.222.333.444"} or {"NOTIFY": {"GP16": 1, "GP17": 0}} or {"GP21":1, "UTC":"2024-01-01"}
-                for key in json_object:
+                for key in ordered_json_data:
                     if ((key == ip_keyname) or (key == notification_keyname) or (key == utc_keyname)):
                         is_message_response = True
                         print("JSON is a response, ignore in callback")
@@ -419,15 +423,16 @@ async def messages(client):
                 
                 if(is_message_response == False):                    
                     # Json objects are not in order, need seperated loop to set MFA if it's part of GPIO message, e.g. {"GP16":1, "MFA":123456}
-                    for key in json_object:
+                    for key in ordered_json_data:
                         if (key == totp_keyname):
-                            mqtt_publish_stats.totp_number = int(json_object[key])  # 6 digit integer (not string)
+                            mqtt_publish_stats.totp_number = int(ordered_json_data[key])  # 6 digit integer (not string)
+                            break
                     
-                    for key in json_object:    
+                    for key in ordered_json_data:    
                         if (key == command_keyname):   
                             # Command in Json received, e.g {"CMD":"getip"}
                             # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)            
-                            cmd_value = json_object[key]                        
+                            cmd_value = ordered_json_data[key]                        
                             if (commands[cmd_value] == 501):  # Use dict as enum without hardcoding
                                 asyncio.create_task(get_stats())  # Async call to get stats
                             elif (commands[cmd_value] == 502):
@@ -435,7 +440,7 @@ async def messages(client):
                             elif (commands[cmd_value] == 503):
                                 asyncio.create_task(get_public_ip())  # Async call to get Ip address
                         elif ((key != totp_keyname) and key.startswith(gpio_prefix)):
-                            value = json_object[key] # e.g. {"GP16":1, "GP17":0}
+                            value = ordered_json_data[key] # e.g. {"GP16":1, "GP17":0}
                             if (get_current_gpio_value(key) != value):
                                 print(f"Async set value on hardware key={key}, value={value}")
                                 asyncio.create_task(set_gpio_value_on_hardware(key, value))  # Async call to set multiple hardware (e.g. multiple relays) at the same time
