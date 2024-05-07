@@ -210,6 +210,7 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 -        Response: {"GP18": 1, "GP19": 0, "UTC": "2047-07-01 0:0:2"}
 - PicoW Hardware: After 10 seconds, GP18 relay is set to OFF 
 -        Response: {"GP18": 0, "UTC": "2047-07-01 0:0:10"}
+- IMPORTANT NOTES: The exeuction order is based on the JSON key name in the request, in other words, GP18 will be executed before GP19. If GP19 has to run before GP18 (depends on your project requirement), this has to be sent {"GP19": 1, "GP18": 1} instead.
 
 ### Action P: Keep hammering on GP16 repeately in short time frame (with MFA disabled)
 - Client sends a message to MQTT broker
@@ -353,3 +354,46 @@ In MQTT specification, a message can be published to MQTT broker on a Topic with
 
 # Important notes on Client ID
 If you have multiple clients connecting to MQTT broker with the same Client ID, unexpected behavior can happen. For example, you configured mobile app "IoT MQTT Panel" with clientID = "MyHomeClient" and PicoW is using the same clientID. Mobile app is able to publish the message, but PicoW subscription will fail on message call back. Please make sure each device or client have a unique ID.
+
+# Known limitation
+Consider GP26 and GP27 are defined as momentary relays with 10s and 2s wait time respectively:
+
+       gpio_pins_for_momentary_relay_switch = {26:10, 27:2}
+       
+GP26 (+6V Relay) combined with GP27 (+9V DPDT) are configured to send +ve/-ve to open/close the water solenoid valve. Under normal situation, this will work perfectly:
+
+       Request:  {"MFA":123456, "GP26":1, "GP27":1}
+       GP26 +6V Relay   on ------------------------------ off (10s) 
+       GP27 +9V DPDT    -- on ---------- off (2s)
+       Result:  Solenoid valve opens and allows water to flow for 2 seconds and then turn off water
+
+However, if there are multiple requests sending to the microcontroller before GP27 is finished, the solenoid value remain opens:
+
+       Request:  {"MFA":123456, "GP26":1, "GP27":1}
+       Request:  {"MFA":123456, "GP26":1, "GP27":1}
+       GP26 +6V Relay   on ------------------------------ off (valve remain opens)
+       GP27 +9V DPDT    -- on ---------- off
+       GP26 +6V Relay                        on (failed because still running)
+       GP27 +9V DPDT                         -- on ------------------- off
+       Result:  Solenoid valve opens and allows water to flow and not able to turn off water
+
+Because Microcontroller has no way to know GP26 and GP27 are depending on each other, they are both individual async call to turn on the hardware. We cannot simply reject 2nd connection of GP26 since we have no knowledge it is tied to GP27 even they are sending in one single JSON payload.
+
+Workaround: If you are using Android App "Tasker" to trigger MQTT (either by Azure Function HTTP call or whatever way such as Tasker MQTT plugin), you can configure tasker by using the build-in variable %TIMES (unix timestamp) to prevent any 2nd attempt within 10 seconds (since we defined the GP26 is 10s delay). 
+
+       Variable Set
+       Name %LastRunTime To 0 
+       If %LastRunTime !Set
+
+       Variable Add
+       Name %LastRunTime Value 10
+
+       HTTP Request
+       Method GET URL http://[your url with secret]
+       If %TIMES > %LastRunTime
+
+       Variable Set
+       Name %LastRunTime To %TIMES
+       
+Unfortunately, this is not the most best workaround.     
+
