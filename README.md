@@ -395,5 +395,5 @@ Workaround: If you are using Android App "Tasker" to trigger MQTT (either by Azu
        Variable Set
        Name %LastRunTime To %TIMES
        
-Unfortunately, this is not the most best workaround.     
+Unfortunately, this is not the best workaround unless we implement something to define the relationship between GP26 and GP27 and lock the GPIO change until both are finished. 
 
