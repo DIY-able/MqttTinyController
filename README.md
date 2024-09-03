@@ -242,7 +242,7 @@ Warning: Skipping Gpio {name} value change for hardware burnout protection, numb
 
 # Request/Response JSON is incompatible with Mobile app
 
-You maybe wondering why are we sending e.g. {"GP1": 1, "GP2: 1} for both request and respond? Why can't we wrap the GPIO status like this?
+You maybe wondering why are we sending e.g. {"GP1": 1, "GP2: 1} for both request and respond? Why can't we wrap the GPIO status like using "REQUEST" and "RESPONSE" keyword in JSON?
 -        {"REQUEST": {"GP1": 1, "GP2": 1}}      # Note: This is for discussion only, not valid format
          {"RESPONSE": {"GP1": 0, "GP2": 0}}     # Note: This is for discussion only, not valid format
 Indeed, this was implemented in v2.2.2. But the mobile app "IoT MQTT Panel" has a bug in JsonPath subscribe on the SWITCH. It doesn't toggle if the subscribe message has a different pattern than publish message.  This change was rolled back and the workaround was to add "UTC" timestamp on the Response message:
