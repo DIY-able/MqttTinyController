@@ -43,6 +43,7 @@ from mqtt_local import *
 # Mar 21, 2024, v2.2.3 [DIYable] - Removed request/response in JSON and use "UTC" in JSON message to identify if it's a response during call back. It's because mobile app "IoT MQTT Panel", publish message in a switch has to be in same pattern as JSON subscribe.
 # Apr 06, 2024, v2.2.4 [DIYable] - Minor bug fix and cleaned up and made get_stats become async call, log when wifi/broker disconnect/connect
 # May 06, 2024, v2.2.5 [DIYable] - Fixed bug on JSON ordering when request includes MFA in the payload, the order can be wrong. e.g. {"MFA":644133, "GP26": 1, "GP27": 1}. Before fix, GP27 may run first.
+# Sep 03, 2024, v2.2.6 [DIYable] - Fixed two instances of a bug related to machine.reset when a permanent failure occurred.
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -675,3 +676,8 @@ if wlan.isconnected():
         set_onboard_led(False)    # PicoW has only one LED 
         client.close()
         asyncio.new_event_loop()
+        print('Wifi connected but broker permanently Failed, machine will reboot...')
+        utime.sleep(wifi_reset_delay_in_seconds)        
+        machine.reset()
+
+

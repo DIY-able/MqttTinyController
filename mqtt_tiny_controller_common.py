@@ -1,7 +1,7 @@
 
 # Common library for mqtt_tiny_controller
 
-import ntptime, utime, network, urequests
+import ntptime, utime, network, urequests, machine
 import json, re, gc, os
 from mqtt_tiny_controller_config import *
 from pico_2fa_totp import *
