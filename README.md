@@ -237,8 +237,13 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 -        Response: Error: Gpio GP16 value change is permanently disabled (until hardware reset) for protection, number of violation exceeded 3
 
 
+### Action S: NTP sync lock command
+- Client sends a message to MQTT broker
+-         Request: {"CMD":"ntp"}
+-        Response: Clock synced, timestamp=1725654570
+                   UTC=2024-09-06 20:29:30
 
-Warning: Skipping Gpio {name} value change for hardware burnout protection, number of change exceeded max threshold {hardware_modified_max} in {hardware_modified_threshold_in_seconds} seconds"
+
 
 # Request/Response JSON is incompatible with Mobile app
 
