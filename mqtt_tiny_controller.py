@@ -44,6 +44,7 @@ from mqtt_local import *
 # Apr 06, 2024, v2.2.4 [DIYable] - Minor bug fix and cleaned up and made get_stats become async call, log when wifi/broker disconnect/connect
 # May 06, 2024, v2.2.5 [DIYable] - Fixed bug on JSON ordering when request includes MFA in the payload, the order can be wrong. e.g. {"MFA":644133, "GP26": 1, "GP27": 1}. Before fix, GP27 may run first.
 # Sep 03, 2024, v2.2.6 [DIYable] - Fixed two instances of a bug related to machine.reset when a permanent failure occurred.
+# Sep 03, 2024, v2.2.7 [DIYable] - Added command "ntp" to force sync clock
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -433,13 +434,16 @@ async def messages(client):
                         if (key == command_keyname):   
                             # Command in Json received, e.g {"CMD":"getip"}
                             # Note: key in a dict is unique, e.g. Multiple commands like this {"CMD": "getip", "CMD": "stats", "CMD": "refresh"} will only execute "refresh" (last item)            
-                            cmd_value = ordered_json_data[key]                        
-                            if (commands[cmd_value] == 501):  # Use dict as enum without hardcoding
-                                asyncio.create_task(get_stats())  # Async call to get stats
+                            cmd_value = ordered_json_data[key] # Use dict as enum without hardcoding                        
+                            if (commands[cmd_value] == 501): 
+                                asyncio.create_task(get_stats())   # CMD "stats" async call to get stats
                             elif (commands[cmd_value] == 502):
-                                mqtt_publish_stats.is_republish = True    # Note: CMD "refresh", set republish next round
+                                mqtt_publish_stats.is_republish = True    # CMD "refresh", set republish next round
                             elif (commands[cmd_value] == 503):
-                                asyncio.create_task(get_public_ip())  # Async call to get Ip address
+                                asyncio.create_task(get_public_ip())  # CMD "getip" async call to get Ip address
+                            elif (commands[cmd_value] == 504):
+                                if (((utime.time() - mqtt_publish_stats.last_clock_synced_time) > forced_clock_sync_wait_in_seconds) and forced_clock_sync_wait_in_seconds > 0):                                                                
+                                    asyncio.create_task(scheduled_sync_clock()) # CMD "ntp" to force clock sync
                         elif ((key != totp_keyname) and key.startswith(gpio_prefix)):
                             value = ordered_json_data[key] # e.g. {"GP16":1, "GP17":0}
                             if (get_current_gpio_value(key) != value):
