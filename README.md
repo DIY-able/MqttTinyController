@@ -6,7 +6,8 @@ Many of the MQTT PicoW codes, samples, and tutorials available on the Internet l
 
 It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, such as network interruption or SSID issues. In additional, in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling, MqttTinyController protects the hackers from starting a fire in your home remotely.
 
-This project source code: https://github.com/DIY-able/MqttTinyController
+ Source Repo: [https://github.com/DIY-able/MqttTinyController](https://github.com/DIY-able/MqttTinyController)
+
 
 # Acknowledgement
 Big thanks to the amazing "mqtt_as" library written by Peter Hinch from UK. Let's forget about umqtt.simple and umqtt.robust, because mqtt_as is on another level. Together with uasyncio library, it solves every problem I had.
