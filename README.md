@@ -104,16 +104,16 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
   
 ### Action A: Turn on a relay on GP16 (with MFA disabled)
 - Client sends a JSON message to MQTT broker
--        Request: {"GP16":1}
+- ```Request: {"GP16":1}```
 - PicoW Hardware: GP16 relay is set to ON
--       Response: {"GP16": 1, "UTC": "2047-07-01 0:0:0"}
+- ```Response: {"GP16": 1, "UTC": "2047-07-01 0:0:0"}```
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 
 ### Action B: Turn off a relay on GP16 (with MFA disabled)
 - Client sends a JSON message to MQTT broker
--        Request: {"GP16":0}
+- ```Request: {"GP16":0}```
 - PicoW Hardware: GP16 relay is set to OFF 
--       Response: {"GP16": 0, "UTC": "2047-07-01 0:0:0"}
+- ```Response: {"GP16": 0, "UTC": "2047-07-01 0:0:0"}```
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=0
 
 ### Action C: Turn on momentary relay on GP18 (with MFA disabled)
