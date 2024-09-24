@@ -100,46 +100,46 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 - GP0, GP1, GP2, GP3 are defined as Contact Switch
 - Client is defined as any client, e.g. MQTT web client, MQTT CLI, mobile app (such as "IoT MQTT Panel")
 - MQTT broker is defined as any MQTT broker (e.g. HiveHQ or Mosquitto)
-- Note: DO NOT include the "UTC" timestamp in your REQUEST message. The "UTC" timestamp is added by the microcontroller to indicate it's a RESPONSE.
+- Note: DO NOT include the "TIME" timestamp in your REQUEST message. The "TIME" timestamp is added by the microcontroller to indicate it's a RESPONSE.
   
 ### Action A: Turn on a relay on GP16 (with MFA disabled)
 - Client sends a JSON message to MQTT broker
 -       Request: {"GP16":1}
 - PicoW Hardware: GP16 relay is set to ON
--       Response: {"GP16": 1, "UTC": "2047-07-01 0:0:0"}
+-       Response: {"GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 
 ### Action B: Turn off a relay on GP16 (with MFA disabled)
 - Client sends a JSON message to MQTT broker
 -       Request: {"GP16":0}
 - PicoW Hardware: GP16 relay is set to OFF 
--       Response: {"GP16": 0, "UTC": "2047-07-01 0:0:0"}
+-       Response: {"GP16": 0, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=0
 
 ### Action C: Turn on momentary relay on GP18 (with MFA disabled)
 - Client sends a JSON message to MQTT broker
 -        Request: {"GP18":1}
 - PicoW Hardware: Toggle GP18 momentary relay by first setting the relay GPIO18 to ON, after 2 seconds, set GPIO18 relay to OFF
--       Response: {"GP18": 0, "UTC": "2047-07-01 0:0:0"}
+-       Response: {"GP18": 0, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the final status with GP18=0
 
 ### Action D: Contact switch GP1 is connected physically on the hardware GPIO board
--        Response: {"GP1": 1, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP1": 1, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP1=1
 
 ### Action E: Combined Action A and Action D in sequence very quickly
--        Response: {"GP1": 1, "GP16": 1, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP1": 1, "GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP1=1 and GP16=1
 
 ### Action F: First time running
--        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP0": 0, "GP1": 0, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the FULL list status
 
 ### Action G: Get the stats from Microcontroller
 - Client sends a message to MQTT broker
 -         Request: {"CMD":"stats"}
--        Response: Uptime=1 days 5 hrs, Outages=0, Mem=32.9%, Temp=18.6C/65.5F, Rtc=2024-02-01 18:40
-- PicoW sends the response to MQTT broker, notifying subscribers the device is still up and running with stats
+-        Response: Uptime=1 days 5 hrs, Outages=0, Wifi=80%, Mem=32.9%, Temp=18.6C/65.5F, Time=2024-02-01 18:40 EST
+- PicoW sends the response to MQTT broker, notifying subscribers the device is still up and running with stats (If timezone EST is enabled, it returns local time)
 
 ### Action I: Get the public IP where the Microcontroller is running
 - Client sends a message to MQTT broker
@@ -150,7 +150,7 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 ### Action J: Manually refresh (re-publish) all GPIO values
 - Client sends a message to MQTT broker
 -         Request: {"CMD":"refresh"}
--        Response: {"GP0": 1, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP0": 1, "GP1": 1, "GP2": 0, "GP3": 0, "GP16": 0, "GP17": 0, "GP18": 0, "GP19": 0, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the FULL list status, in this example GP0=1 and GP1=1
 
 ### Action K: Turn on relay on GP16 with MFA (TOTP) enabled on this GPIO (access denied)
@@ -165,28 +165,28 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 - Alternatively, you can send 1 message
 -        Request: {"GP16": 1, "MFA": 123456}
 - PicoW Hardware: GP16 relay is set to ON
--        Response: {"GP16": 1, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 - All messages on MQTT broker: (first 2 messages were sent by client, last message was sent by Microcontroller)
 -         {"MFA": 123456}
           {"GP16": 1}
-          {"GP16": 1, "UTC": "2047-07-01 0:0:0"}
+          {"GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}
 - All messages on MQTT broker alternatively: (first message was sent by client, 2nd message by Microcontroller)
 -         {"GP16": 1, "MFA": 123456}
-          {"GP16": 1, "UTC": "2047-07-01 0:0:0"}        
+          {"GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}        
 
 ### Action M: Turn on relay on GP16 with MFA (TOTP) and Notification enabled on this GPIO (access granted)
 - Client sends 2 messages to MQTT broker
 -         Request: {"MFA": 123456}
                    {"GP16": 1}
 - PicoW Hardware: GP16 relay is set to ON
--        Response: {"GP16": 1, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}
                    {"NOTIFY": {"GP16": 1}}
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1
 - All messages on MQTT broker:
 -        {"MFA": 123456}
          {"GP16": 1}
-         {"GP16": 1, "UTC": "2047-07-01 0:0:0"}
+         {"GP16": 1, "TIME": "2047-07-01 0:0:0 UTC"}
          {"NOTIFY": {"GP16": 1}}
 
 ### Action N: Turn on 2 relays at the same time GP16, GP17 (with MFA disabled)
@@ -194,7 +194,7 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 -         Request: {"GP16": 1, "GP17": 1}
 - PicoW Hardware: GP16 and GP17 relay are set to ON at the same time
 - PicoW sends the response to MQTT broker, all subscribers have the updated message with GP16=1 GP17=1
--        Response: {"GP16": 1, "GP17": 1, "UTC": "2047-07-01 0:0:0"}
+-        Response: {"GP16": 1, "GP17": 1, "TIME": "2047-07-01 0:0:0 UTC"}
 
 ### Action O: Turn on 2 momentary relays at the same time GP18, GP19 (with MFA disabled)
 - GP18 and GP19 are defined as momentary relays with 10s and 2s wait time respectively
@@ -202,17 +202,17 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 - Client sends a message to MQTT broker
 -         Request: {"GP18": 1, "GP19": 1}
 - PicoW Hardware: GP18 and GP19 relays are set to ON at the same time
--        Response: {"GP18": 1, "GP19": 1, "UTC": "2047-07-01 0:0:1"}
+-        Response: {"GP18": 1, "GP19": 1, "TIME": "2047-07-01 0:0:1 UTC"}
 - PicoW Hardware: After 2 seconds, GP19 relay is set to OFF 
--        Response: {"GP19": 0, "UTC": "2047-07-01 0:0:2"}
+-        Response: {"GP19": 0, "TIME": "2047-07-01 0:0:2 UTC"}
 - PicoW Hardware: After 10 seconds, GP18 relay is set to OFF 
--        Response: {"GP18": 0, "UTC": "2047-07-01 0:0:10"}
+-        Response: {"GP18": 0, "TIME": "2047-07-01 0:0:10 UTC"}
 - In some cases, depends on when the hardware detection occurs, you may see this sequence:
 - PicoW Hardware: GP18 and GP19 relay are set to ON at the same time
 - PicoW Hardware: GP19 is set to OFF, BEFORE {"GP19": 1} respond is sent
--        Response: {"GP18": 1, "GP19": 0, "UTC": "2047-07-01 0:0:2"}
+-        Response: {"GP18": 1, "GP19": 0, "TIME": "2047-07-01 0:0:2 UTC"}
 - PicoW Hardware: After 10 seconds, GP18 relay is set to OFF 
--        Response: {"GP18": 0, "UTC": "2047-07-01 0:0:10"}
+-        Response: {"GP18": 0, "TIME": "2047-07-01 0:0:10 UTC"}
 - IMPORTANT NOTES: The exeuction order is based on the JSON key name in the request, in other words, GP18 will be executed before GP19. If GP19 has to run before GP18 (depends on your project requirement), this has to be sent {"GP19": 1, "GP18": 1} instead.
 
 ### Action P: Keep hammering on GP16 repeately in short time frame (with MFA disabled)
@@ -241,21 +241,27 @@ Solution: Use "mqtt_as" library written by Peter Hinch. It passed all the test c
 
 
 ### Action S: NTP sync lock command
-- Client sends a message to MQTT broker
+- Client sends a message to MQTT broker  (If timezone EST is enabled, it returns local time)
 -         Request: {"CMD":"ntp"}
--        Response: Clock synced, timestamp=1725654570
-                   UTC=2024-09-06 20:29:30
+-        Response: Scheduled clock synced, timestamp=1725654570
+                   Time=2024-09-06 20:29:30 EST
 
-
+### Action T: Clock out of sync
+- Power up the microcontroller, PicoW has internal clock set to Jan 1, 2021 0:0:0.
+- In config, default_clock_year_in_unix_timestamp = 1609459200 is defined
+- Auto sync is detected and NTP sync is performed.
+- If NTP sync fails, it will re-try every x min defined in forced_clock_sync_wait_in_seconds.  (If timezone EST is enabled, it returns local time)
+-        Response: Auto clock synced, timestamp=1725654570
+                   Time=2024-09-06 20:29:30 EST
 
 # Request/Response JSON is incompatible with Mobile app
 
 You maybe wondering why are we sending e.g. {"GP1": 1, "GP2: 1} for both request and respond? Why can't we wrap the GPIO status like using "REQUEST" and "RESPONSE" keyword in JSON?
 -        {"REQUEST": {"GP1": 1, "GP2": 1}}      # Note: This is for discussion only, not valid format
          {"RESPONSE": {"GP1": 0, "GP2": 0}}     # Note: This is for discussion only, not valid format
-Indeed, this was implemented in v2.2.2. But the mobile app "IoT MQTT Panel" has a bug in JsonPath subscribe on the SWITCH. It doesn't toggle if the subscribe message has a different pattern than publish message.  This change was rolled back and the workaround was to add "UTC" timestamp on the Response message:
--        {"GP1": 0, "UTC": "2047-07-01 0:0:0"}
-In the microcontroller, if callback sees the "UTC" key in the JSON message, it flags it as a response message and won't trigger any hardware change. This is very important for async calls where you want to set multiple GPIOs at once but individual relay turns off at different time (momentary relay).
+Indeed, this was implemented in v2.2.2. But the mobile app "IoT MQTT Panel" has a bug in JsonPath subscribe on the SWITCH. It doesn't toggle if the subscribe message has a different pattern than publish message.  This change was rolled back and the workaround was to add "TIME" timestamp on the Response message:
+-        {"GP1": 0, "TIME": "2047-07-01 0:0:0 UTC"}
+In the microcontroller, if callback sees the "TIME" key in the JSON message, it flags it as a response message and won't trigger any hardware change. This is very important for async calls where you want to set multiple GPIOs at once but individual relay turns off at different time (momentary relay).
   
 # Mobile App "IoT MQTT Panel" Setup by Example
 
