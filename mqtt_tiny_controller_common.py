@@ -32,22 +32,91 @@ def connect_wifi(toggle_onboard_led_delegate):
         print(wlan.ifconfig())
         
     return wlan
-
-# Sync clock at startup
-def sync_clock():    
-    try:
-        ntptime.settime()        
-        print(f"Synced clock successfully, timestamp={utime.time()}" )
-    except Exception as e:
-        print(f"Error synchronizing clock: {e}")
-    finally:
-        print(f"Rtc={get_formatted_utc_time_now()}")
         
-# Get formatted UTC time
-def get_formatted_utc_time_now():
-    t = utime.gmtime()
-    formatted_time = '{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(t[0], t[1], t[2], t[3], t[4], t[5])
-    return(formatted_time)
+
+# Get wifi strength in percentage with given ssid
+def get_formatted_wifi_strength(wlan, ssid):
+    
+    wifi_strength = 0
+    try:
+        # Get rssi from wlan. Notes: wlan.status('rssi') does not work on PicoW, it has to do a scan
+        networks = wlan.scan()  # Scans for networks        
+        rssi = get_rssi_for_ssid(networks, ssid)
+        
+        if rssi is not None:            
+            # Define the range of RSSI values (based on general Wi-Fi standards)
+            max_rssi = -30  # Best signal strength (100%)
+            min_rssi = -90  # Worst signal strength (0%)
+            
+            # Cap the rssi value within the defined range
+            if rssi <= min_rssi:
+                return 0
+            elif rssi >= max_rssi:
+                return 100
+            
+            # Translate RSSI to a percentage
+            wifi_strength = int((rssi - min_rssi) * 100 / (max_rssi - min_rssi))
+        else:
+            wifi_strength = -1  # SSID not found
+        
+    except Exception as e:
+        wifi_strength = -1 # Any other errors
+        
+    return (f"{wifi_strength}%")
+
+
+# Look for the RSSI from SSID network array
+def get_rssi_for_ssid(networks, target_ssid):
+    for network in networks:
+        ssid, bssid, channel, rssi, authmode, hidden = network
+        if ssid == target_ssid:
+            return rssi
+    return None  # Return None if SSID not found
+       
+
+# Function to check if DST applies (Second Sunday of March to First Sunday of November)
+def is_dst(year, month, day):
+    if month > 3 and month < 11:
+        return True
+    if month == 3:
+        second_sunday = 14 - (utime.localtime(utime.mktime((year, 3, 1, 0, 0, 0, 0, 0)))[6])
+        return day >= second_sunday
+    if month == 11:
+        first_sunday = 7 - (utime.localtime(utime.mktime((year, 11, 1, 0, 0, 0, 0, 0)))[6])
+        return day < first_sunday
+    return False
+
+# Function to format time tuple into 'YYYY-MM-DD HH:MM:SS'
+def format_time(time_tuple, time_zone_name):
+    return "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {}".format(
+        time_tuple[0], time_tuple[1], time_tuple[2],
+        time_tuple[3], time_tuple[4], time_tuple[5],
+        time_zone_name
+    )
+
+# Function to get formatted time based on time zone
+def get_formatted_time_now(time_zone_name):
+    utc_time = utime.time()  # Get current UTC time (in seconds since epoch)
+
+    if time_zone_name == "UTC":
+        utc_time_tuple = utime.localtime(utc_time)
+        return format_time(utc_time_tuple, time_zone_name)
+
+    elif time_zone_name == "EST":  # Only supports EST, implement your own time zone if you wish
+        local_time = utime.localtime(utc_time)
+        year, month, day = local_time[0], local_time[1], local_time[2]
+
+        # EST is UTC-5, EDT is UTC-4 (DST)
+        offset = -5 if not is_dst(year, month, day) else -4
+
+        # Adjust time for the EST/EDT offset
+        est_time = utime.localtime(utc_time + offset * 3600)
+
+        return format_time(est_time, time_zone_name)
+
+    else:
+        return "Unsupported time zone"
+
     
 # Get memory usage to check memory leak 
 def get_formatted_memory_usage(full=False):

@@ -45,6 +45,8 @@ from mqtt_local import *
 # May 06, 2024, v2.2.5 [DIYable] - Fixed bug on JSON ordering when request includes MFA in the payload, the order can be wrong. e.g. {"MFA":644133, "GP26": 1, "GP27": 1}. Before fix, GP27 may run first.
 # Sep 03, 2024, v2.2.6 [DIYable] - Fixed two instances of a bug related to machine.reset when a permanent failure occurred.
 # Sep 03, 2024, v2.2.7 [DIYable] - Added command "ntp" to force sync clock
+# Sep 23, 2024, v2.2.8 [DIYable] - Auto NTP clock sync when out of sync is detected (compare to PicoW default clock 2021-01-01) and added wifi strength in stats
+# Sep 24, 2024, v2.2.9 [DIYable] - Support local time in response and log, renamed key "UTC" to "TIME" (internally time is still in UTC)
 
 # References:
 # https://github.com/micropython/micropython-lib/tree/master/micropython/umqtt.simple (very simple)
@@ -318,10 +320,11 @@ def log(message):
 # Get the stats such as uptime and outages
 async def get_stats():    
     error_message = None
+    global wlan    
     try:
         total_uptime = (utime.time() - mqtt_publish_stats.startup_time)
         uptime_days, uptime_hours, uptime_minutes, uptime_seconds = calculate_time(total_uptime)
-        log(f"Uptime={uptime_days} days {uptime_hours} hrs, Outages={mqtt_publish_stats.outage_counter}, Mem={get_formatted_memory_usage()}, Temp={get_formatted_temperature()}, UTC={get_formatted_utc_time_now()}")        
+        log(f"Uptime={uptime_days} days {uptime_hours} hrs, Outages={mqtt_publish_stats.outage_counter}, Wifi={get_formatted_wifi_strength(wlan, wifi_ssid.encode('utf-8'))}, Mem={get_formatted_memory_usage()}, Temp={get_formatted_temperature()}, Time={get_formatted_time_now(time_zone_name)}")
     except Exception as e:
         error_message = f"Exception to get stats: {e}"
 
@@ -351,12 +354,25 @@ async def scheduled_sync_clock():
     try:
         ntptime.settime()
         mqtt_publish_stats.last_clock_synced_time = utime.time()
-        log(f"Clock synced, timestamp={utime.time()}" )
+        log(f"Scheduled clock synced, timestamp={utime.time()}" )
     except Exception as e:
         log(f"Error synchronizing clock: {e}")
     finally:
-        log(f"UTC={get_formatted_utc_time_now()}")
+        log(f"Time={get_formatted_time_now(time_zone_name)}")
     
+# This auto_sync_clock is non-blocking, it is called when serious out of sync detected
+async def auto_sync_clock():
+    global mqtt_publish_stats
+    try:
+        ntptime.settime()
+        mqtt_publish_stats.startup_time = utime.time()    # We need to reset startup time
+        mqtt_publish_stats.last_clock_synced_time = utime.time()
+        log(f"Auto clock synced, timestamp={utime.time()}" )
+    except Exception as e:
+        log(f"Error synchronizing clock: {e}")
+    finally:
+        log(f"Time={get_formatted_time_now(time_zone_name)}")
+        
 
 #  ----------------------------------------------------------------------------
 
@@ -418,7 +434,7 @@ async def messages(client):
                 
                  # Because of call back, we need to ignore {"IP":"111.222.333.444"} or {"NOTIFY": {"GP16": 1, "GP17": 0}} or {"GP21":1, "UTC":"2024-01-01"}
                 for key in ordered_json_data:
-                    if ((key == ip_keyname) or (key == notification_keyname) or (key == utc_keyname)):
+                    if ((key == ip_keyname) or (key == notification_keyname) or (key == time_keyname)):
                         is_message_response = True
                         print("JSON is a response, ignore in callback")
                         break
@@ -462,7 +478,7 @@ async def down(client):
         client.down.clear()
         mqtt_publish_stats.is_online = False    
         mqtt_publish_stats.outage_counter += 1
-        log(f"WiFi or broker is down, UTC={get_formatted_utc_time_now()}")
+        log(f"WiFi or broker is down, Time={get_formatted_time_now(time_zone_name)}")
         print("WiFi or broker is down.")
 
 async def up(client):
@@ -470,7 +486,7 @@ async def up(client):
         await client.up.wait()
         client.up.clear()
         mqtt_publish_stats.is_online = True
-        log(f"Connected: {mqtt_client_id.decode('utf-8')}, UTC={get_formatted_utc_time_now()}")
+        log(f"Connected: {mqtt_client_id.decode('utf-8')}, Time={get_formatted_time_now(time_zone_name)}")
         print(f"Connected: {mqtt_client_id.decode('utf-8')}")
         await client.subscribe(mqtt_topic, mqtt_qos)
         
@@ -603,9 +619,15 @@ async def worker(client):
         # Uncomment this to Delete all RETAIN messages from the MQTT broker (e.g. if you accidentially set the retain flag in "Iot MQTT Panel" app)
         # client.publish(mqtt_topic, '', True)
         
-        # Non-blocking NTP clock sync
+        # Non-blocking NTP clock sync (daily sync)
         if (((utime.time() - mqtt_publish_stats.last_clock_synced_time) > scheduled_clock_sync_in_seconds) and scheduled_clock_sync_in_seconds > 0):
             asyncio.create_task(scheduled_sync_clock())       
+        
+        # Non-blocking NTP clock sync (force sync if first time run or it's out of sync is detected when first time ntp sync fails)
+        # PicoW default clock is 2021-01-01 0:0:0 + 31533803 seconds is 2021-12-31 23:23:23
+        if ((mqtt_publish_stats.is_first_time_run) or (utime.time() < (default_clock_year_in_unix_timestamp + 31533803)) and (((utime.time() - mqtt_publish_stats.last_clock_synced_time) > forced_clock_sync_wait_in_seconds) and forced_clock_sync_wait_in_seconds > 0)):
+            asyncio.create_task(auto_sync_clock())
+        
         
         # Publishing of LOG and GOIP values are in two different steps
         # Because we are not updating publish_counter or last_published_time for log
@@ -629,17 +651,16 @@ async def worker(client):
                         
             if (is_full):
                 all_gpio = get_gpio_status(True) # Get the full list in JSON
-                all_gpio[utc_keyname] = get_formatted_utc_time_now()                
+                all_gpio[time_keyname] = get_formatted_time_now(time_zone_name)
                 json_gpio_status = json.dumps(all_gpio)                
             else:
                 all_gpio = get_gpio_status(False) # Get the list of changed values in JSON
-                all_gpio[utc_keyname] = get_formatted_utc_time_now()                
+                all_gpio[time_keyname] = get_formatted_time_now(time_zone_name)                
                 json_gpio_status = json.dumps(all_gpio)
                 reset_gpio_changed_status()  # Reset is_changed to False            
 
             mqtt_publish_stats.publish_counter = mqtt_publish_stats.publish_counter + 1 
-            mqtt_publish_stats.last_published_time = utime.time()
-            # log(f"Last GPIO Published={get_formatted_utc_time_now()}") # Log the last published time stamp and send to broker (purely for logging purpose)
+            mqtt_publish_stats.last_published_time = utime.time()            
             
             await client.publish(mqtt_topic, json_gpio_status, mqtt_retain, mqtt_qos)  #QoS=1, Retain flag=false
             
@@ -657,11 +678,11 @@ mqtt_gpio_hardware = None
 #       a power outage where the WiFi is not yet available.
 # Workaround: To mitigate this issue, a retry loop has been implemented before invoking the "mqtt_as" code.
 
+global wlan
 wlan = connect_wifi(toggle_onboard_led)   # pass "toggle_onboard_led" as delegate
 if wlan.isconnected():             
 
     # Use NTP server to sync the internal clock
-    sync_clock()   # This sync_lock is blocking (not async), it's in the _common lib only use 1 time when starting up
     init()         # If there is any error in clock sync, we use the default RTC start time: Jan 1, 2021 (TOTP will fail though)
 
     # Init config[] for mqtt_as

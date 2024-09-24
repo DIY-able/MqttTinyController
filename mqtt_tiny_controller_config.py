@@ -43,7 +43,8 @@ command_keyname = "CMD"   # Request commands in JSON:  e.g {"CMD": "stats"} to c
 commands = {"stats":501, "refresh":502, "getip":503, "ntp":504}  # Use dict as enum without hardcoding
 json_ip_provider = "https://jsonip.com" # Returns device public IP address in JSON format
 ip_keyname = "IP"   # Response in JSON, {"IP":"111.222.333.444"}
-utc_keyname = "UTC" # Time in UTC for microcontroller response, e.g. {"GP26": 1, "GP27": 1, "UTC": "2030-01-15 00:37:39"}
+time_keyname = "TIME" # Time in UTC/local for microcontroller response, e.g. {"GP26": 1, "GP27": 1, "TIME": "2030-01-15 00:37:39 UTC"}
+time_zone_name = "EST"  # Only support "UTC" and "EST" (EST supports DST auto switch, implement your own time zone in _common.py lib)
 
 # Notification
 notification_keyname = "NOTIFY"   # Response in JSON, e.g. {"NOTIFY": {"GP16": 1, "GP17": 0}}
@@ -52,6 +53,7 @@ gpio_pins_for_notification = {0, 1, 16, 17}   # Only send notification when GPIO
 # NTP clock sync for RTC (Real time clock)
 scheduled_clock_sync_in_seconds = 86400  # sync everyday (86400 sec), -1 disable clock sync. Need to enable sync if MFA (TOTP) is used
 forced_clock_sync_wait_in_seconds = 180  # forced ntp sync wait (180 sec, 3 min) before next sync command e.g. {"CMD":"ntp"} is allowed, -1 disable force NTP sync
+default_clock_year_in_unix_timestamp = 1609459200 # picoW default clock 2021-01-01 00:00:00 UTC. This is for auto NTP sync.
 
 # Multi-factor authentication (MFA) using Time-based One-time password (TOTP)
 totp_keyname = "MFA"  # Request command "MFA" is easier to type than "TOTP", e.g. {"MFA": 123456}
