@@ -1,5 +1,8 @@
-# MqttTinyController for IoT Home Automation
-MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches. It has capability to configure relay switches as momentary switches, offers hardware burnout protection, and enhances security through Multi-Factor Authentication (TOTP). Supports JSON payload for free mobile app such as "IoT MQTT Panel".
+# How to use MQTT for IoT Home Automation on PicoW?
+This project MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches. It has capability to configure relay switches as momentary switches, offers hardware burnout protection, and enhances security through Multi-Factor Authentication (TOTP). Supports JSON payload for free mobile app such as "IoT MQTT Panel".
+
+# Tested 24/7 for more than 365 days
+This code was published in 2024 and has been running for 24/7 and more than 365 days, it is so stable without issues. Even with power outage, wifi/Internet disruption and MQTT broker down, MqttTinyController automatically recovered by itself. 
 
 # Project
 Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. 
@@ -307,12 +310,13 @@ In the microcontroller, if callback sees the "TIME" key in the JSON message, it 
        Payload Off: 0  (or any value, doesn't matter)
        Enable notification: Checked (Paid Pro version only)
        Matches with RegEx: selected
-       RegEx: ^(?=.*\bNOTIFY\b)(?=.*\bGP1\b).*
+       RegEx: ^(?=.*\bNOTIFY\b)(?=.*\bGP1\b)
        Message: Garage Door LEFT notification
        Payload Json: Unchecked 
        Note: "IoT MQTT Panel" has limitation on notification, it cannot trigger different message based on different value and
-       it doesn't support JSON path on notification. See "Notification issue on Mobile app" section for details. 
-       This is a workaround by creating an "LED Indicator" for custom message. 
+       it doesn't support JSON path on notification. Also, please see "Notification issues on Mobile app" and 
+       "IoT MQTT Panel limitation and bugs" section for details why we need to use this as workaround by creating 
+       an "LED Indicator" for custom message. 
 
 
 # Can relay on/off be scheduled?
@@ -323,7 +327,7 @@ https://github.com/DIY-able/MqttTimerFunction
 Running Azure Function with such low volume doesn't cost a lot since the basic tier includes 1 million requests. With "Pay as you go" plan, all you need is to pay for Azure Blob Storage. Running a MQTT Timer function like this costs me around $0.02 US a day (or $0.6 US a month). 
 
 # Notification issues on Mobile app
-Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, it could result in FALSE POSITIVE notifications when "value is changed". To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
+Similar to scheduling, notifications should not be the responsibility of the microcontroller. Many mobile MQTT apps include notification features, they keep a set of in-memory values. However, it is possible the app resets those values to default (such as NULL) caused by unknown reasons such as network interruption, app updates or app crashes, any of the reasons could result in FALSE POSITIVE notifications when "value is changed". To address this issue, MqttTinyController sends a JSON notification message to the MQTT broker, for example, {"NOTIFY": {"GP1", 1}} when there is a real hardware change on GP1. You can configure which GPIO has notifications enabled, see 'gpio_pins_for_notification' parameter in config file.  With this JSON response, you can enable notification (if your mobile app supports that) and send notification based on this JSON message/payload.
 
        notification_keyname = "NOTIFY"                 # Response in JSON, e.g. {"NOTIFY": {"GP16": 1, "GP17": 0}}
        gpio_pins_for_notification = {0, 1, 16, 17}     # Only send notification when GPIO values are changed
@@ -411,3 +415,143 @@ Workaround: If you are using Android App "Tasker" to trigger MQTT (either by Azu
        
 Unfortunately, this is not the best workaround unless we implement something to define the relationship between GP26 and GP27 and lock the GPIO change until both are finished. 
 
+# Mobile app "IoT MQTT Panel" limitation and bugs
+
+IoT MQTT Panel is an awesome app. but there are bugs I can reproduce. I contacted the developer in 2024 and bugs have never been fixed. 
+
+1. Notification inside a SWITCH using "Matches with Regex" doesn't work. As my microcontroller sends a different JSON pattern for notification than JSON pattern for publish. My workaround is to setup a LED indicator separately dedicated for notification, then I used "Matches with Regex" and notification would work perfectly. (See how to setup notification in above section)
+
+2. Similar to Notification, the SWITCH using "JsonPath for subscribe" doesn't work if it is NOT the same pattern as "Json pattern for publish". For example, publish {"REQUEST": {"GPIO1": 1}} to MQTT broker to turn on a device. Then, my microcontroller responses with {"RESPONSE": {"GPIO1": 0}} to turn it off later, if I setup JsonPath for subscribe as "$.RESPONSE.GPIO1", it should flip the switch, however, it doesn't work. In order for this to work, microcontroller has to send the exact same patter as publish {"REQUEST": {"GPIO1": 0}} and JsonPath has to setup same as publish pattern $.REQUEST.GPIO1 for it to work. Interesting enough, if I am doing the same on LED indicator, JsonPath works fine even they don’t use the same pattern.
+
+This is the JSON file to reproduce the bug:
+
+```json
+{
+    "dataVersion": 152,
+    "globalSettings": {
+        "runInBackground": true,
+        "appTheme": "default"
+    },
+    "connections": [{
+            "connectionName": "MQTT_TEST",
+            "clientId": "xxxxxxxx",
+            "host": "xxxxxxxxxxxxxx",
+            "port": 8883,
+            "connectionType": "ssl",
+            "username": "xxxxxxxxx",
+            "password": "xxxxxxxxx",
+            "keepAlive": 60,
+            "cleanSession": false,
+            "autoConnect": true,
+            "disableHostnameCheck": false,
+            "allowUntrustCACertificate": false,
+            "caCertificateFileName": "",
+            "clientCertificateFileName": "",
+            "clientKeyFileName": "",
+            "sslClientPassword": "",
+            "enableWillMessage": false,
+            "willTopic": "",
+            "willPayload": "",
+            "willRetain": false,
+            "willQoS": 0,
+            "defaultDashboard": "dashboard_1",
+            "connectionId": "connection_1",
+            "notifyOnDisconnect": false
+        }
+    ],
+    "dashboards": [{
+            "connectionId": "connection_1",
+            "dashboardId": "dashboard_1",
+            "dashboardName": "RiniDash ",
+            "dashboardPrefixTopic": ""
+        }
+    ],
+    "panels": [{
+            "connectionId": "connection_1",
+            "dashboardId": "dashboard_1",
+            "panelId": "panel_1",
+            "panelName": "GPIO20",
+            "type": "switch",
+            "mqttType": "pubsub",
+            "topic": "mytopic\/action",
+            "payloadOn": "1",
+            "payloadOff": "0",
+            "qos": 1,
+            "retain": false,
+            "hidePanelName": false,
+            "defaultColor": "primary",
+            "disableDashboardPrefix": false,
+            "seperateSubscribeTopic": "",
+            "hasCustomIcon": true,
+            "iconOn": "switch_on",
+            "iconColorOn": "#d60000",
+            "iconOff": "switch_off",
+            "iconColorOff": "#9e9e9e",
+            "enableNotification": true,
+            "notificationFilter": "matchRegEx",
+            "notificationMin": "",
+            "notificationMax": "",
+            "notificationValue": "",
+            "notificationRegex": "^(?=.*\\bALERT\\b)(?=.*\\bGPIO20\\b)",
+            "notificationMessage": "Alert, sent by Switch",
+            "isJSONPayload": true,
+            "jsonPath": "$.RESPONSE.GPIO20",
+            "jsonEnvelope": "{\"REQUEST\": {\"GPIO20\": <payload>}}",
+            "panelWidth": "100",
+            "panelMergeClass": "",
+            "iconSize": "small",
+            "showReceivedTimeStamp": false,
+            "showSentTimeStamp": false,
+            "confirmBeforePublish": true,
+            "confirmationMessage": "{\"GPIO20\": <payload>}"
+        }, {
+            "connectionId": "connection_1",
+            "dashboardId": "dashboard_1",
+            "panelId": "panel_2",
+            "panelName": "ALERT TEST",
+            "type": "led",
+            "mqttType": "sub",
+            "topic": "mytopic\/action",
+            "payloadOn": "1",
+            "payloadOff": "0",
+            "qos": 1,
+            "hidePanelName": false,
+            "disableDashboardPrefix": false,
+            "iconOn": "led",
+            "iconColorOn": "#df0000",
+            "iconOff": "led",
+            "iconColorOff": "#9e9e9e",
+            "enableNotification": true,
+            "notificationFilter": "matchRegEx",
+            "notificationMin": "",
+            "notificationMax": "",
+            "notificationValue": "",
+            "notificationRegex": "^(?=.*\\bALERT\\b)(?=.*\\bGPIO20\\b)",
+            "notificationMessage": "Alert, sent by LED",
+            "isJSONPayload": false,
+            "jsonPath": "",
+            "panelWidth": "100",
+            "panelMergeClass": "",
+            "iconSize": "small",
+            "showReceivedTimeStamp": false
+        }
+    ]
+}
+
+```
+
+For JsonPath bug, here are the steps to reproduce:
+
+1. On the app, TURN ON the switch
+2. This will send the MQTT broker {"REQUEST": {"GPIO20": 1}}
+3. The switch: UI is RED (on)
+4. Using any client, Publish {"RESPONSE": {"GPIO20": 0}} to MQTT broker
+5. The switch, UI may change to GREY (off) for the very first time. But if you repeat Step (2) to Step (4), the switch will eventually stay RED (on) without refreshing.
+6. If I modify the Panel 1 (the switch) on the app and change the "JsonPath for subscribe" to $.REQUEST.GPIO20
+7. On the app, TURN ON the switch
+8. The switch: UI is RED (on)
+9. Using any client, Publish {"REQUEST": {"GPIO20": 0}} to MQTT broker (now using the same key in JSON as publish)
+10. The switch: UI is GREY (off). It works consistently. This shows the "JsonPath to subscribe" has to patch the exact pattern of the Publish.
+
+For Notification bug:
+When doing the above steps, it should trigger notification. As you can see, both Panel's notification are using the exactly the same RegEx, but only the LED indicator sends out the notification "Alert, sent by LED". The one inside the switch "Alert, send by Switch" is never triggered.  I believe these 2 bugs are related, it seems like the SWITCH publish pattern is tied to JsonPath to subscribe and Notification Regex. 
