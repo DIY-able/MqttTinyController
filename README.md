@@ -1,13 +1,13 @@
 # How to use MQTT for IoT Home Automation on PicoW?
 This project MqttTinyController runs on Raspberry Pi PicoW (RP2040) using any free cloud MQTT broker (e.g. HiveHQ or Mosquitto) to control home automation relay switches and contact switches. It has capability to configure relay switches as momentary switches, offers hardware burnout protection, and enhances security through Multi-Factor Authentication (TOTP). Supports JSON payload for free mobile app such as "IoT MQTT Panel".
 
-# Tested 24/7 for more than 365 days
-This code was published in 2024 and has been running for 24/7 and more than 365 days, it is so stable without issues. Even with power outage, wifi/Internet disruption and MQTT broker down, MqttTinyController automatically recovered by itself. 
+# 99.9% Uptime - Tested for 24/7 and 365 days with hacker proof
+This code has been running very stable, even with power outage, wifi/Internet disruption and MQTT broker down, MqttTinyController automatically recovered by itself. In the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling, MqttTinyController protects the hackers from starting a fire in your home remotely. Also, "MFA" (TOTP) can be used on the request for additional layer of protection in case MQTT broker is compromised.
 
 # Project
-Many of the MQTT PicoW codes, samples, and tutorials available on the Internet lack the robustness required to handle real-life disasters. They often fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. 
+Many of the MQTT PicoW sample codes and tutorials on the Internet fall short, either being overly simplistic or lacking essential features. This code is designed to meet the demands of DIY enthusiasts, it has undergone extensive testing to ensure reliability, it's stable to run 24/7 at home. 
 
-It was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, such as network interruption or SSID issues. In additional, in the face of potential threats such as hacking attempts targeting your MQTT client account to manipulate relay toggling, MqttTinyController protects the hackers from starting a fire in your home remotely.
+This project was originally based on umqtt.simple, umqtt.robust but both of the libraries FAILED so badly in my test cases, later during the development cycle, the code was re-written using "mqtt_as" library and asyncio library. The final product is capable of operating continuously without interruption, such as network interruption or SSID issues.
 
  Source Repo: [https://github.com/DIY-able/MqttTinyController](https://github.com/DIY-able/MqttTinyController)
 
@@ -42,6 +42,7 @@ Github: https://github.com/eddmann/pico-2fa-totp
 - Sync clock with NTP server for stats and MFA.
 - Multi-Factor Authentication (MFA) using Time-Based One-Time Passwords (TOTP) with support for multiple keys for each GPIO. 
 - Configure GPIO to send a JSON "NOTIFY" message when there is a real hardware change. This feature can be utilized by clients for notifications.
+- Support local time on Notification (EST was supported)
 
 
 # Hardware
@@ -304,18 +305,34 @@ In the microcontroller, if callback sees the "TIME" key in the JSON message, it 
        Name: MFA     
        Payload: {"MFA": <payload>}
        QoS sets to 1       
-### LED Indicator: (For Notification on GP1)
+### LED Indicator: (Notification on GP1 for Garage Door is OPENED)
        Name: NOTIFY GP1
        Payload On: 1  (or any value, doesn't matter)
        Payload Off: 0  (or any value, doesn't matter)
        Enable notification: Checked (Paid Pro version only)
        Matches with RegEx: selected
-       RegEx: ^(?=.*\bNOTIFY\b)(?=.*\bGP1\b)
-       Message: Garage Door LEFT notification
+       RegEx: ^(?=.*"NOTIFY")(?=.*"GP1".*\s*1)
+       Message: Garage Door LEFT is OPENED
        Payload Json: Unchecked 
+
        Note: "IoT MQTT Panel" has limitation on notification, it cannot trigger different message based on different value and
        it doesn't support JSON path on notification. Also, please see "Notification issues on Mobile app" and 
-       "IoT MQTT Panel limitation and bugs" section for details why we need to use this as workaround by creating 
+       "IoT MQTT Panel bugs" section for details why we need to use this as workaround by creating 
+       an "LED Indicator" for custom message. 
+
+### LED Indicator: (Notification on GP1 for Garage Door is CLOSED)
+       Name: NOTIFY GP1
+       Payload On: 1  (or any value, doesn't matter)
+       Payload Off: 0  (or any value, doesn't matter)
+       Enable notification: Checked (Paid Pro version only)
+       Matches with RegEx: selected
+       RegEx: ^(?=.*"NOTIFY")(?=.*"GP1".*\s*0)
+       Message: Garage Door LEFT is CLOSED
+       Payload Json: Unchecked 
+       
+       Note: "IoT MQTT Panel" has limitation on notification, it cannot trigger different message based on different value and
+       it doesn't support JSON path on notification. Also, please see "Notification issues on Mobile app" and 
+       "IoT MQTT Panel bugs" section for details why we need to use this as workaround by creating 
        an "LED Indicator" for custom message. 
 
 
@@ -415,7 +432,7 @@ Workaround: If you are using Android App "Tasker" to trigger MQTT (either by Azu
        
 Unfortunately, this is not the best workaround unless we implement something to define the relationship between GP26 and GP27 and lock the GPIO change until both are finished. 
 
-# Mobile app "IoT MQTT Panel" limitation and bugs
+# Mobile app "IoT MQTT Panel" Bugs
 
 IoT MQTT Panel is an awesome app. but there are bugs I can reproduce. I contacted the developer in 2024 and bugs have never been fixed. 
 
